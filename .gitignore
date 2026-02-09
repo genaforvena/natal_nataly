@@ -6,3 +6,4 @@ venv/
 *.sqlite
 .DS_Store
 data/
+test_integration.py
