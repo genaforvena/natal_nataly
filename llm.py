@@ -8,7 +8,7 @@ from prompt_loader import get_prompt
 logger = logging.getLogger(__name__)
 
 # Support DeepSeek and Groq
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")  # Default to groq
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")  # Default to groq
 
 if LLM_PROVIDER == "deepseek":
     logger.info(f"Initializing LLM client with provider: {LLM_PROVIDER}")
