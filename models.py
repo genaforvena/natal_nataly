@@ -151,3 +151,30 @@ class DebugSession(Base):
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     status = Column(String, nullable=True)  # in_progress|completed|failed
+
+
+class UserNatalChart(Base):
+    """
+    Unified natal chart storage - single source of truth for all chart data.
+    Supports both generated and user-uploaded charts in standardized JSON format.
+    """
+    __tablename__ = "user_natal_charts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False)
+    
+    # Standardized chart data in JSON format
+    # Contains: planets, houses, aspects, source, original_input, engine_version, created_at
+    chart_json = Column(Text, nullable=False)
+    
+    # Metadata
+    source = Column(String, nullable=False)  # "generated" or "uploaded"
+    original_input = Column(Text, nullable=True)  # Original text from user or birth data
+    engine_version = Column(String, nullable=True)  # "swisseph vX.X" or "user_uploaded"
+    
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Active status (only one chart can be active per user at a time)
+    is_active = Column(Boolean, default=True)

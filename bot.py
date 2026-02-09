@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from astrology import generate_natal_chart, get_engine_version
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
-from models import User, BirthData, Reading, AstroProfile
+from models import User, BirthData, Reading, AstroProfile, UserNatalChart
 from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_AWAITING_CONFIRMATION, STATE_AWAITING_EDIT_CONFIRMATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
 from debug import (
     DEBUG_MODE, 
@@ -24,6 +24,7 @@ from debug import (
 )
 from debug_commands import handle_debug_command
 from user_commands import handle_user_command
+from chart_parser import parse_uploaded_chart, validate_chart_data
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -490,14 +491,16 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             
             # Generate natal chart
             logger.info(f"Generating natal chart for user {user.telegram_id}")
+            original_input = f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}"
             chart = generate_natal_chart(
                 birth_data["dob"],
                 birth_data["time"],
                 birth_data["lat"],
-                birth_data["lng"]
+                birth_data["lng"],
+                original_input=original_input
             )
             
-            # Store natal chart with versioning
+            # Store natal chart with versioning (legacy NatalChart table)
             chart_id = store_natal_chart(
                 user.telegram_id,
                 birth_data,
@@ -505,6 +508,24 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                 get_engine_version(),
                 "SE 2.10"  # Swiss Ephemeris version
             )
+            
+            # Store in unified UserNatalChart table (new source of truth)
+            # First, deactivate any existing active charts
+            session.query(UserNatalChart).filter_by(
+                telegram_id=user.telegram_id,
+                is_active=True
+            ).update({"is_active": False})
+            
+            # Create new chart record
+            user_chart = UserNatalChart(
+                telegram_id=user.telegram_id,
+                chart_json=json.dumps(chart, ensure_ascii=False),
+                source="generated",
+                original_input=original_input,
+                engine_version=chart.get("engine_version", get_engine_version()),
+                is_active=True
+            )
+            session.add(user_chart)
             
             # Create profile and set as active
             create_and_activate_profile(session, user, birth_data, chart)
@@ -558,6 +579,101 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
         await send_telegram_message(
             chat_id,
             "⚠️ Пожалуйста, ответь **CONFIRM** для подтверждения или **EDIT** для изменения данных."
+        )
+
+
+async def handle_awaiting_chart_upload(session, user: User, chat_id: int, text: str):
+    """Handle uploaded chart text"""
+    logger.info(f"Handling awaiting_chart_upload for user {user.telegram_id}")
+    
+    # Check for cancel command
+    if text.strip().upper() == "/CANCEL":
+        user.state = STATE_HAS_CHART
+        session.commit()
+        await send_telegram_message(chat_id, "❌ Upload cancelled.")
+        return
+    
+    try:
+        # Try to parse the uploaded chart
+        logger.info("Attempting to parse uploaded chart")
+        chart = parse_uploaded_chart(text, format_hint="auto")
+        
+        # Validate chart data
+        validate_chart_data(chart)
+        
+        # Store chart in UserNatalChart table
+        # First, deactivate any existing active charts
+        session.query(UserNatalChart).filter_by(
+            telegram_id=user.telegram_id,
+            is_active=True
+        ).update({"is_active": False})
+        
+        # Create new chart record
+        user_chart = UserNatalChart(
+            telegram_id=user.telegram_id,
+            chart_json=json.dumps(chart, ensure_ascii=False),
+            source="uploaded",
+            original_input=text[:1000],  # Store first 1000 chars
+            engine_version=chart.get("engine_version", "user_uploaded"),
+            is_active=True
+        )
+        session.add(user_chart)
+        
+        # Update user state
+        user.state = STATE_HAS_CHART
+        session.commit()
+        
+        # Send success message with chart summary
+        planets_count = len(chart.get("planets", {}))
+        houses_count = len(chart.get("houses", {}))
+        aspects_count = len(chart.get("aspects", []))
+        
+        success_msg = "✅ **Chart uploaded successfully!**\n\n"
+        success_msg += f"📊 **Chart Summary:**\n"
+        success_msg += f"• Planets: {planets_count}\n"
+        success_msg += f"• Houses: {houses_count}\n"
+        success_msg += f"• Aspects: {aspects_count}\n\n"
+        
+        # Show some key planets
+        if "Sun" in chart["planets"]:
+            sun = chart["planets"]["Sun"]
+            success_msg += f"☀️ Sun: {sun['deg']:.2f}° {sun['sign']}, House {sun['house']}\n"
+        
+        if "Moon" in chart["planets"]:
+            moon = chart["planets"]["Moon"]
+            success_msg += f"🌙 Moon: {moon['deg']:.2f}° {moon['sign']}, House {moon['house']}\n"
+        
+        if "Ascendant" in chart["planets"]:
+            asc = chart["planets"]["Ascendant"]
+            success_msg += f"⬆️ Ascendant: {asc['deg']:.2f}° {asc['sign']}\n"
+        
+        success_msg += "\n✨ Your chart is now ready! You can:\n"
+        success_msg += "• Ask questions about your chart\n"
+        success_msg += "• Use /my_chart_raw to see the full chart data\n"
+        success_msg += "• Use /my_readings to view your readings"
+        
+        await send_telegram_message(chat_id, success_msg)
+        logger.info(f"Chart uploaded successfully for user {user.telegram_id}")
+        
+    except ValueError as e:
+        # Parsing error
+        logger.warning(f"Chart parsing failed: {e}")
+        await send_telegram_message(
+            chat_id,
+            f"❌ **Failed to parse chart:**\n{str(e)}\n\n"
+            "Please make sure your chart is in the correct format:\n"
+            "```\n"
+            "Sun: 10°30' Capricorn, House 4\n"
+            "Moon: 10°10' Libra, House 1\n"
+            "...\n"
+            "```\n\n"
+            "Type /cancel to cancel upload, or send corrected chart data."
+        )
+    except Exception as e:
+        logger.exception(f"Error handling chart upload: {e}")
+        await send_telegram_message(
+            chat_id,
+            "Произошла ошибка при обработке карты. Попробуйте ещё раз или используйте /cancel для отмены."
         )
 
 
@@ -793,6 +909,9 @@ async def route_message(session, user: User, chat_id: int, text: str):
         return
     elif user.state == STATE_AWAITING_CONFIRMATION:
         await handle_awaiting_confirmation(session, user, chat_id, text)
+        return
+    elif user.state == "awaiting_chart_upload":
+        await handle_awaiting_chart_upload(session, user, chat_id, text)
         return
     
     # For users with charts, use intent-based routing for conversational flow

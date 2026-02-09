@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import datetime
 from db import SessionLocal
-from models import User, Reading, AstroProfile, NatalChart, PipelineLog
+from models import User, Reading, AstroProfile, NatalChart, PipelineLog, UserNatalChart
 from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CONFIRMATION, STATE_AWAITING_EDIT_CONFIRMATION
 
 # Configure logging
@@ -120,17 +120,27 @@ async def handle_my_chart_raw_command(telegram_id: str, send_message_func) -> bo
     try:
         session = SessionLocal()
         try:
-            # Get latest natal chart
-            natal_chart = session.query(NatalChart).filter_by(
-                telegram_id=telegram_id
-            ).order_by(NatalChart.created_at.desc()).first()
+            # Get active user chart from unified table
+            user_chart = session.query(UserNatalChart).filter_by(
+                telegram_id=telegram_id,
+                is_active=True
+            ).order_by(UserNatalChart.created_at.desc()).first()
             
-            if not natal_chart:
-                await send_message_func("У тебя пока нет натальной карты. Отправь данные рождения, чтобы создать карту.")
-                return True
-            
-            # Parse chart JSON
-            chart_data = json.loads(natal_chart.natal_chart_json)
+            if not user_chart:
+                # Fallback to legacy NatalChart table
+                natal_chart = session.query(NatalChart).filter_by(
+                    telegram_id=telegram_id
+                ).order_by(NatalChart.created_at.desc()).first()
+                
+                if not natal_chart:
+                    await send_message_func("У тебя пока нет натальной карты. Отправь данные рождения или используй /upload_chart.")
+                    return True
+                
+                # Parse legacy chart JSON
+                chart_data = json.loads(natal_chart.natal_chart_json)
+            else:
+                # Parse unified chart JSON
+                chart_data = json.loads(user_chart.chart_json)
             
             # Format as pretty JSON
             chart_json = json.dumps(chart_data, indent=2, ensure_ascii=False)
@@ -154,6 +164,13 @@ async def handle_my_chart_raw_command(telegram_id: str, send_message_func) -> bo
                 response += "```json\n"
                 response += chart_json
                 response += "\n```\n\n"
+                
+                # Show source info
+                if user_chart:
+                    response += f"📊 **Source:** {user_chart.source}\n"
+                    response += f"🔧 **Engine:** {user_chart.engine_version}\n"
+                    response += f"📅 **Created:** {user_chart.created_at.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                
                 response += "ℹ️ You can verify this chart on AstroSeek or other astrology services."
                 await send_message_func(response)
             
@@ -341,5 +358,65 @@ async def handle_user_command(telegram_id: str, command: str, send_message_func)
         return await handle_my_readings_command(telegram_id, send_message_func, arg)
     elif cmd == "/edit_birth":
         return await handle_edit_birth_command(telegram_id, send_message_func)
+    elif cmd == "/upload_chart":
+        return await handle_upload_chart_command(telegram_id, send_message_func)
     
     return False
+
+
+async def handle_upload_chart_command(telegram_id: str, send_message_func) -> bool:
+    """
+    Handle /upload_chart command - Start flow to upload a chart.
+    
+    Args:
+        telegram_id: User's Telegram ID
+        send_message_func: Async function to send messages
+        
+    Returns:
+        bool: True if command was handled successfully
+    """
+    logger.info(f"[USER_CMD] /upload_chart requested by {telegram_id}")
+    
+    try:
+        session = SessionLocal()
+        try:
+            user = session.query(User).filter_by(telegram_id=telegram_id).first()
+            
+            if not user:
+                # Create user if doesn't exist
+                user = User(telegram_id=telegram_id)
+                session.add(user)
+            
+            # Set user state to awaiting chart upload
+            user.state = "awaiting_chart_upload"
+            session.commit()
+            
+            response = "📤 **Upload Your Natal Chart**\n\n"
+            response += "Please send your natal chart data in text format.\n\n"
+            response += "**Supported format (AstroSeek style):**\n"
+            response += "```\n"
+            response += "Sun: 10°30' Capricorn, House 4\n"
+            response += "Moon: 10°10' Libra, House 1\n"
+            response += "Mercury: 5°45' Capricorn, House 4\n"
+            response += "Venus: 15°48' Capricorn, House 4\n"
+            response += "...\n\n"
+            response += "House 1: 26°30' Virgo\n"
+            response += "House 2: 22°15' Libra\n"
+            response += "...\n\n"
+            response += "Sun Square Moon (orb: 0.03)\n"
+            response += "Sun Conjunction Venus (orb: 5.42)\n"
+            response += "...\n"
+            response += "```\n\n"
+            response += "ℹ️ Send your chart text and I'll parse it for you.\n"
+            response += "Type /cancel to cancel upload."
+            
+            await send_message_func(response)
+            return True
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.exception(f"Error handling /upload_chart command: {e}")
+        await send_message_func("Произошла ошибка при загрузке карты.")
+        return True
