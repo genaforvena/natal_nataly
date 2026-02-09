@@ -8,5 +8,5 @@ SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
 def init_db():
-    from models import User
+    from models import User, BirthData
     Base.metadata.create_all(bind=engine)

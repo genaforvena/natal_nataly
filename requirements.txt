@@ -5,3 +5,4 @@ pyswisseph
 sqlalchemy
 openai
 python-dotenv
+httpx
