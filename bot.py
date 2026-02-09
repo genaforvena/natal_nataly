@@ -54,7 +54,8 @@ async def send_telegram_message(chat_id: int, text: str):
 
 def parse_birth_data(text: str):
     """Parse birth data from user message"""
-    logger.debug(f"Parsing birth data from text: {text[:100]}...")
+    # Log only message length, not the actual sensitive content
+    logger.debug(f"Parsing birth data from message (length: {len(text)} chars)")
     
     dob_pattern = r"DOB:\s*(\d{4}-\d{2}-\d{2})"
     time_pattern = r"Time:\s*(\d{2}:\d{2})"
@@ -76,7 +77,8 @@ def parse_birth_data(text: str):
         "lat": float(lat_match.group(1)),
         "lng": float(lng_match.group(1))
     }
-    logger.info(f"Birth data parsed successfully: {result}")
+    # Log only that parsing succeeded, not the actual sensitive data
+    logger.info(f"Birth data parsed successfully")
     return result
 
 def upsert_user(session, telegram_id: str):
@@ -100,7 +102,8 @@ def upsert_user(session, telegram_id: str):
 
 def save_birth_data(session, telegram_id: str, birth_data: dict):
     """Save birth data to database"""
-    logger.debug(f"Saving birth data for telegram_id={telegram_id}: {birth_data}")
+    # Log only that we're saving, not the actual sensitive data
+    logger.debug(f"Saving birth data for telegram_id={telegram_id}")
     try:
         birth_record = BirthData(
             telegram_id=telegram_id,
@@ -127,7 +130,9 @@ async def handle_telegram_update(update: dict):
     - send reply to Telegram
     '''
     logger.info(f"=== Processing Telegram update ===")
-    logger.debug(f"Update payload: {update}")
+    # Log only update type, not the full payload with sensitive data
+    update_type = "message" if "message" in update else "other"
+    logger.debug(f"Update type: {update_type}")
     
     try:
         # Extract message data
@@ -141,7 +146,8 @@ async def handle_telegram_update(update: dict):
         text = message.get("text", "")
         
         logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
-        logger.debug(f"Message text: {text}")
+        # Log only message length, not the actual sensitive content
+        logger.debug(f"Message length: {len(text)} characters")
         
         # Parse birth data
         birth_data = parse_birth_data(text)

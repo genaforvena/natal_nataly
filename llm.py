@@ -35,11 +35,13 @@ else:
     raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Use 'deepseek' or 'groq'.")
 
 def interpret_chart(chart_json: dict) -> str:
-    logger.debug(f"interpret_chart called with chart data: {chart_json}")
+    # Log only that we're interpreting, not the sensitive chart data
+    logger.debug(f"interpret_chart called with {len(chart_json)} chart elements")
     try:
         chart_str = json.dumps(chart_json, indent=2)
         logger.info(f"Making LLM API call with model: {MODEL}")
-        logger.debug(f"Chart data being sent to LLM: {chart_str}")
+        # Don't log the actual chart data which contains sensitive birth info
+        logger.debug(f"Chart data size: {len(chart_str)} characters")
         
         response = client.chat.completions.create(
             model=MODEL,
@@ -51,7 +53,7 @@ def interpret_chart(chart_json: dict) -> str:
         
         result = response.choices[0].message.content
         logger.info(f"LLM API call successful, response length: {len(result)} characters")
-        logger.debug(f"LLM response: {result[:200]}...")  # Log first 200 chars
+        logger.debug(f"LLM response preview: {result[:100]}...")  # Log first 100 chars
         
         return result
     except Exception as e:

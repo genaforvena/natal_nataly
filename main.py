@@ -38,7 +38,10 @@ async def telegram_webhook(request: Request):
     logger.info("Webhook endpoint called")
     try:
         data = await request.json()
-        logger.debug(f"Webhook received: {data}")
+        # Log only non-sensitive metadata
+        message_id = data.get("message", {}).get("message_id", "unknown")
+        chat_id = data.get("message", {}).get("chat", {}).get("id", "unknown")
+        logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}")
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
         return result

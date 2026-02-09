@@ -38,7 +38,7 @@ def get_zodiac_sign(degree: float) -> str:
 
 def datetime_to_julian(dob: str, time: str) -> float:
     """Convert date and time to Julian Day"""
-    logger.debug(f"Converting datetime to Julian: dob={dob}, time={time}")
+    logger.debug(f"Converting datetime to Julian")
     try:
         dt = datetime.strptime(f"{dob} {time}", "%Y-%m-%d %H:%M")
         jd = swe.julday(dt.year, dt.month, dt.day, 
@@ -53,7 +53,8 @@ def generate_natal_chart(dob: str, time: str, lat: float, lng: float) -> dict:
     '''
     Returns structured natal chart JSON.
     '''
-    logger.info(f"Generating natal chart for dob={dob}, time={time}, lat={lat}, lng={lng}")
+    # Log only that we're generating, not the sensitive birth details
+    logger.info(f"Generating natal chart")
     try:
         # Convert to Julian Day
         jd = datetime_to_julian(dob, time)
