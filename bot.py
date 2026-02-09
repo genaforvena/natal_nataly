@@ -46,8 +46,13 @@ async def send_telegram_message(chat_id: int, text: str):
                     "text": text
                 }
             )
-            logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
-            return response
+            # Check if the request was successful (2xx status codes)
+            if response.is_success:
+                logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
+                return response
+            else:
+                logger.error(f"Failed to send message to chat_id={chat_id}, status={response.status_code}, response={response.text}")
+                raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
     except Exception as e:
         logger.exception(f"Error sending Telegram message to chat_id={chat_id}: {e}")
         raise
@@ -207,10 +212,17 @@ async def handle_telegram_update(update: dict):
             return {"ok": True}
         
         # Send reading to user
-        logger.info(f"Sending reading to telegram_id={telegram_id}")
-        await send_telegram_message(chat_id, reading)
+        try:
+            logger.info(f"Sending reading to telegram_id={telegram_id}")
+            await send_telegram_message(chat_id, reading)
+            logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
+        except Exception as e:
+            logger.exception(f"Failed to send reading to telegram_id={telegram_id}: {e}")
+            # Cannot notify user since message sending failed
+            # This is typically due to invalid bot token, chat_id, or Telegram API issues
         
-        logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
+        # Always return ok: True to Telegram to acknowledge webhook receipt
+        # This prevents Telegram from retrying the webhook repeatedly
         return {"ok": True}
         
     except Exception as e:
