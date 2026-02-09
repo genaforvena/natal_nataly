@@ -50,9 +50,18 @@ async def send_telegram_message(chat_id: int, text: str):
             if response.is_success:
                 logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
                 return response
+            elif response.status_code == 404:
+                # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
+                # This is not a critical error - log it and return None without raising
+                logger.warning(f"Cannot send message to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
+                return None
             else:
                 logger.error(f"Failed to send message to chat_id={chat_id}, status={response.status_code}, response={response.text}")
                 raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
+    except httpx.HTTPError as e:
+        # Network-related errors (connection, timeout, etc.)
+        logger.exception(f"Network error sending Telegram message to chat_id={chat_id}: {e}")
+        raise
     except Exception as e:
         logger.exception(f"Error sending Telegram message to chat_id={chat_id}: {e}")
         raise
