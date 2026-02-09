@@ -4,9 +4,9 @@ import httpx
 import logging
 from datetime import datetime, timezone
 from astrology import generate_natal_chart
-from llm import extract_birth_data, generate_clarification_question, interpret_chart
+from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
-from models import User, BirthData, Reading
+from models import User, BirthData, Reading, AstroProfile
 from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
 
 # Configure logging
@@ -154,6 +154,193 @@ def mark_reading_delivered(session, reading_id: int):
         raise
 
 
+# ============================================================================
+# PROFILE MANAGEMENT FUNCTIONS
+# ============================================================================
+
+def get_active_profile(session, user: User):
+    """
+    Get user's active AstroProfile or None.
+    
+    Returns:
+        AstroProfile object or None if no active profile
+    """
+    logger.debug(f"Getting active profile for user {user.telegram_id}")
+    try:
+        if user.active_profile_id:
+            profile = session.query(AstroProfile).filter_by(id=user.active_profile_id).first()
+            if profile:
+                logger.info(f"Active profile found: id={profile.id}, type={profile.profile_type}")
+                return profile
+            else:
+                logger.warning(f"Active profile ID {user.active_profile_id} not found, resetting")
+                user.active_profile_id = None
+                session.commit()
+        
+        logger.info(f"No active profile for user {user.telegram_id}")
+        return None
+    except Exception as e:
+        logger.exception(f"Error getting active profile: {e}")
+        raise
+
+
+def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dict, 
+                  profile_name: str = None, profile_type: str = "self") -> AstroProfile:
+    """
+    Create a new AstroProfile.
+    
+    Args:
+        session: Database session
+        telegram_id: User's Telegram ID
+        birth_data: Dict with dob, time, lat, lng
+        natal_chart: Generated natal chart dict
+        profile_name: Optional name for the profile
+        profile_type: Type of profile (self|partner|friend|analysis)
+        
+    Returns:
+        Created AstroProfile object
+    """
+    logger.info(f"Creating new profile for user {telegram_id}, type={profile_type}, name={profile_name}")
+    try:
+        profile = AstroProfile(
+            telegram_id=telegram_id,
+            name=profile_name,
+            profile_type=profile_type,
+            birth_data_json=json.dumps(birth_data),
+            natal_chart_json=json.dumps(natal_chart)
+        )
+        session.add(profile)
+        session.commit()
+        logger.info(f"Profile created successfully: id={profile.id}")
+        return profile
+    except Exception as e:
+        logger.exception(f"Error creating profile: {e}")
+        raise
+
+
+def set_active_profile(session, user: User, profile_id: int):
+    """
+    Set the active profile for a user.
+    
+    Args:
+        session: Database session
+        user: User object
+        profile_id: ID of the profile to activate
+    """
+    logger.info(f"Setting active profile {profile_id} for user {user.telegram_id}")
+    try:
+        # Verify profile exists and belongs to user
+        profile = session.query(AstroProfile).filter_by(
+            id=profile_id,
+            telegram_id=user.telegram_id
+        ).first()
+        
+        if not profile:
+            logger.error(f"Profile {profile_id} not found or doesn't belong to user {user.telegram_id}")
+            raise ValueError(f"Profile not found")
+        
+        user.active_profile_id = profile_id
+        session.commit()
+        logger.info(f"Active profile set successfully")
+    except Exception as e:
+        logger.exception(f"Error setting active profile: {e}")
+        raise
+
+
+def list_user_profiles(session, telegram_id: str):
+    """
+    Get all profiles for a user.
+    
+    Returns:
+        List of AstroProfile objects
+    """
+    logger.debug(f"Listing profiles for user {telegram_id}")
+    try:
+        profiles = session.query(AstroProfile).filter_by(telegram_id=telegram_id).order_by(AstroProfile.created_at).all()
+        logger.info(f"Found {len(profiles)} profiles for user {telegram_id}")
+        return profiles
+    except Exception as e:
+        logger.exception(f"Error listing profiles: {e}")
+        raise
+
+
+def build_agent_context(session, user: User, profile: AstroProfile = None) -> dict:
+    """
+    Build context for assistant response.
+    
+    Args:
+        session: Database session
+        user: User object
+        profile: Optional active profile
+        
+    Returns:
+        Dict with natal_chart, profile_name, recent_questions, etc.
+    """
+    logger.debug(f"Building agent context for user {user.telegram_id}")
+    try:
+        context = {
+            "natal_chart": None,
+            "profile_name": None,
+            "recent_questions": [],
+            "assistant_mode": user.assistant_mode
+        }
+        
+        if profile:
+            context["natal_chart"] = json.loads(profile.natal_chart_json) if profile.natal_chart_json else None
+            context["profile_name"] = profile.name or "Self"
+            
+            # Get last 5 readings for context
+            recent_readings = session.query(Reading).filter_by(
+                telegram_id=user.telegram_id
+            ).order_by(Reading.created_at.desc()).limit(5).all()
+            
+            context["recent_questions"] = [r.reading_text[:100] for r in recent_readings]
+        
+        logger.debug(f"Context built: has_chart={context['natal_chart'] is not None}, profile={context['profile_name']}")
+        return context
+    except Exception as e:
+        logger.exception(f"Error building agent context: {e}")
+        raise
+
+
+def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict) -> AstroProfile:
+    """
+    Helper function to create a new profile, set it as active, and update user state.
+    
+    Args:
+        session: Database session
+        user: User object
+        birth_data: Birth data dict
+        chart: Generated natal chart dict
+        
+    Returns:
+        Created AstroProfile
+    """
+    logger.info(f"Creating and activating profile for user {user.telegram_id}")
+    
+    # Save birth data for legacy support
+    birth_record = save_birth_data(session, user.telegram_id, birth_data)
+    
+    # Create new AstroProfile
+    profile = create_profile(
+        session, 
+        user.telegram_id, 
+        birth_data, 
+        chart,
+        profile_name=None,  # Default profile has no special name
+        profile_type="self"
+    )
+    
+    # Set as active profile
+    set_active_profile(session, user, profile.id)
+    
+    # Store natal chart in user for legacy compatibility
+    chart_json = json.dumps(chart)
+    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+    
+    return profile
+
+
 async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: str):
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
@@ -194,12 +381,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             birth_data["lng"]
         )
         
-        # Save birth data
-        birth_record = save_birth_data(session, user.telegram_id, birth_data)
-        
-        # Store natal chart and update state
-        chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+        # Create profile and set as active
+        create_and_activate_profile(session, user, birth_data, chart)
         
         # Send confirmation message
         await send_telegram_message(
@@ -261,12 +444,11 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             birth_data["lng"]
         )
         
-        # Save birth data
-        birth_record = save_birth_data(session, user.telegram_id, birth_data)
+        # Create profile and set as active
+        create_and_activate_profile(session, user, birth_data, chart)
         
-        # Store natal chart and update state
-        chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, missing_fields=None)
+        # Clear missing fields
+        update_user_state(session, user.telegram_id, STATE_HAS_CHART, missing_fields=None)
         
         # Send confirmation message
         await send_telegram_message(
@@ -289,25 +471,42 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
     logger.info(f"Handling chatting_about_chart for user {user.telegram_id}")
     
     try:
-        # Load natal chart from database
-        if not user.natal_chart_json:
-            logger.error(f"User {user.telegram_id} in chatting state but no chart found")
-            await send_telegram_message(
-                chat_id,
-                "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова."
-            )
-            update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
-            return
+        # Get active profile
+        profile = get_active_profile(session, user)
         
-        chart = json.loads(user.natal_chart_json)
+        if not profile or not profile.natal_chart_json:
+            # Fallback to legacy chart stored in user
+            if not user.natal_chart_json:
+                logger.error(f"User {user.telegram_id} in chatting state but no chart found")
+                await send_telegram_message(
+                    chat_id,
+                    "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова."
+                )
+                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                return
+            
+            # Create profile from legacy data if needed
+            chart = json.loads(user.natal_chart_json)
+            # We don't have birth data in this case, so we'll use what we have
+            logger.warning("Using legacy chart data without full birth data")
+        else:
+            chart = json.loads(profile.natal_chart_json)
         
         # Update state to chatting_about_chart if it was has_chart
         if user.state == STATE_HAS_CHART:
             update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
         
-        # Get LLM interpretation based on user's question
-        logger.info(f"Getting chart interpretation for user question")
-        reading = interpret_chart(chart, question=text)
+        # Build context for assistant
+        context = build_agent_context(session, user, profile)
+        
+        # Get assistant response using new assistant mode
+        if user.assistant_mode:
+            logger.info(f"Using assistant mode for response")
+            reading = generate_assistant_response(context, text)
+        else:
+            # Fallback to legacy interpret_chart
+            logger.info(f"Using legacy chart interpretation")
+            reading = interpret_chart(chart, question=text)
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
@@ -330,16 +529,158 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         )
 
 
+# ============================================================================
+# INTENT-BASED HANDLERS
+# ============================================================================
+
+async def handle_profiles_command(session, user: User, chat_id: int):
+    """Handle /profiles command to list all user profiles"""
+    logger.info(f"Handling /profiles command for user {user.telegram_id}")
+    
+    try:
+        profiles = list_user_profiles(session, user.telegram_id)
+        
+        if not profiles:
+            await send_telegram_message(chat_id, "У тебя пока нет ни одного профиля. Отправь данные рождения, чтобы создать первый профиль.")
+            return
+        
+        # Build profiles list message
+        message = "📋 Твои профили:\n\n"
+        
+        for profile in profiles:
+            is_active = (profile.id == user.active_profile_id)
+            indicator = "✅ " if is_active else "   "
+            name = profile.name or "Ты"
+            profile_type = profile.profile_type.capitalize()
+            
+            message += f"{indicator}{name} ({profile_type})\n"
+        
+        message += "\nЧтобы переключиться на другой профиль, просто скажи 'переключись на [имя]'"
+        
+        await send_telegram_message(chat_id, message)
+        
+    except Exception as e:
+        logger.exception(f"Error handling profiles command: {e}")
+        await send_telegram_message(chat_id, "Ошибка при получении списка профилей.")
+
+
+async def handle_meta_conversation(session, user: User, chat_id: int, text: str):
+    """Handle meta conversation like greetings, casual chat"""
+    logger.info(f"Handling meta_conversation for user {user.telegram_id}")
+    
+    try:
+        # Build minimal context for assistant
+        profile = get_active_profile(session, user)
+        context = build_agent_context(session, user, profile)
+        
+        # Use assistant to respond naturally
+        reading = generate_assistant_response(context, text)
+        await send_telegram_message(chat_id, reading)
+        
+    except Exception as e:
+        logger.exception(f"Error handling meta conversation: {e}")
+        await send_telegram_message(chat_id, "Привет! Я твой личный астрологический ассистент. Чем могу помочь?")
+
+
+async def handle_general_question(session, user: User, chat_id: int, text: str):
+    """Handle general astrology questions not specific to user's chart"""
+    logger.info(f"Handling ask_general_question for user {user.telegram_id}")
+    
+    try:
+        # Build context
+        profile = get_active_profile(session, user)
+        context = build_agent_context(session, user, profile)
+        
+        # Use assistant to explain general astrology
+        reading = generate_assistant_response(context, text)
+        await send_telegram_message(chat_id, reading)
+        
+    except Exception as e:
+        logger.exception(f"Error handling general question: {e}")
+        await send_telegram_message(chat_id, "Произошла ошибка. Попробуй переформулировать вопрос.")
+
+
 async def route_message(session, user: User, chat_id: int, text: str):
-    """Route message based on user state"""
+    """
+    Route message based on user state and intent classification.
+    Uses intent classification for users with charts to enable conversational flow.
+    """
     logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
     
+    # For users in data collection states, use traditional state-based routing
     if user.state == STATE_AWAITING_BIRTH_DATA:
         await handle_awaiting_birth_data(session, user, chat_id, text)
+        return
     elif user.state == STATE_AWAITING_CLARIFICATION:
         await handle_awaiting_clarification(session, user, chat_id, text)
-    elif user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
-        await handle_chatting_about_chart(session, user, chat_id, text)
+        return
+    
+    # For users with charts, use intent-based routing for conversational flow
+    if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
+        try:
+            # Classify intent
+            intent_result = classify_intent(text)
+            intent = intent_result.get("intent", "unknown")
+            confidence = intent_result.get("confidence", 0.0)
+            
+            logger.info(f"Intent classified: {intent} (confidence: {confidence})")
+            
+            # Route based on intent
+            if intent == "provide_birth_data":
+                # User wants to provide new birth data (maybe for a new profile)
+                logger.info("User providing new birth data, switching to awaiting_birth_data state")
+                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                await handle_awaiting_birth_data(session, user, chat_id, text)
+                
+            elif intent == "ask_about_chart":
+                # User asking about their chart - use assistant mode
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+            elif intent == "ask_general_question":
+                # General astrology question
+                await handle_general_question(session, user, chat_id, text)
+                
+            elif intent == "meta_conversation":
+                # Casual conversation, greetings
+                await handle_meta_conversation(session, user, chat_id, text)
+                
+            elif intent == "new_profile_request":
+                # User wants to create a new profile
+                await send_telegram_message(
+                    chat_id,
+                    "Отлично! Давай создадим новый профиль. Отправь мне данные рождения: дату, время и место."
+                )
+                # Switch to awaiting birth data state but remember we're creating a new profile
+                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                
+            elif intent == "switch_profile":
+                # User wants to switch profiles
+                profiles = list_user_profiles(session, user.telegram_id)
+                if len(profiles) <= 1:
+                    await send_telegram_message(
+                        chat_id,
+                        "У тебя пока только один профиль. Хочешь создать ещё один?"
+                    )
+                else:
+                    await handle_profiles_command(session, user, chat_id)
+                    await send_telegram_message(
+                        chat_id,
+                        "Выбери профиль, назвав его имя или номер."
+                    )
+                    
+            elif intent == "clarify_birth_data":
+                # User provided clarification-style response outside clarification flow - treat as chart question
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+            else:
+                # Unknown or low confidence - default to chatting about chart
+                logger.warning(f"Unknown or low confidence intent, defaulting to chart chat")
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+        except Exception as e:
+            logger.exception(f"Error in intent-based routing: {e}")
+            # Fallback to traditional routing
+            await handle_chatting_about_chart(session, user, chat_id, text)
     else:
         logger.error(f"Unknown user state: {user.state}")
         await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
@@ -383,6 +724,13 @@ async def handle_telegram_update(update: dict):
         session = SessionLocal()
         try:
             user = get_or_create_user(session, telegram_id)
+            
+            # Check for commands first
+            if text.startswith("/"):
+                if text.startswith("/profiles"):
+                    await handle_profiles_command(session, user, chat_id)
+                    logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
+                    return {"ok": True}
             
             # Route message based on state
             await route_message(session, user, chat_id, text)
