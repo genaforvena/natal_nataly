@@ -128,14 +128,22 @@ async def handle_telegram_update(update: dict):
                 birth_data["lng"]
             )
         except Exception as e:
-            await send_telegram_message(chat_id, "Could not generate chart")
+            print(f"Chart generation error: {e}")
+            await send_telegram_message(
+                chat_id, 
+                "Failed to generate natal chart. Please verify your birth date and time are correct."
+            )
             return {"ok": True}
         
         # Get LLM interpretation
         try:
             reading = interpret_chart(chart)
         except Exception as e:
-            await send_telegram_message(chat_id, "Reading unavailable")
+            print(f"LLM interpretation error: {e}")
+            await send_telegram_message(
+                chat_id,
+                "Unable to generate your astrological reading at this time. Please try again later."
+            )
             return {"ok": True}
         
         # Send reading to user

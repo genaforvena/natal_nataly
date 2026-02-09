@@ -2,6 +2,7 @@ import swisseph as swe
 from datetime import datetime
 
 EPHE_PATH = "./ephe"
+HOUSE_SYSTEM = b'P'  # Placidus house system
 swe.set_ephe_path(EPHE_PATH)
 
 # Zodiac signs
@@ -57,7 +58,7 @@ def generate_natal_chart(dob: str, time: str, lat: float, lng: float) -> dict:
             }
         
         # Calculate Ascendant
-        houses = swe.houses(jd, lat, lng, b'P')  # Placidus house system
+        houses = swe.houses(jd, lat, lng, HOUSE_SYSTEM)
         asc_degree = houses[1][0]  # Ascendant
         chart["Ascendant"] = {
             "degree": asc_degree,
