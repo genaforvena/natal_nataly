@@ -2,7 +2,7 @@ import os
 import re
 import httpx
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from astrology import generate_natal_chart
 from llm import interpret_chart
 from db import SessionLocal
@@ -109,7 +109,7 @@ def upsert_user(session, telegram_id: str):
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
             logger.debug(f"Updating existing user: {telegram_id}")
-            user.last_seen = datetime.utcnow()
+            user.last_seen = datetime.now(timezone.utc)
         else:
             logger.info(f"Creating new user: {telegram_id}")
             user = User(telegram_id=telegram_id)
@@ -166,7 +166,7 @@ def mark_reading_delivered(session, reading_id: int):
         reading = session.query(Reading).filter_by(id=reading_id).first()
         if reading:
             reading.delivered = True
-            reading.delivered_at = datetime.utcnow()
+            reading.delivered_at = datetime.now(timezone.utc)
             session.commit()
             logger.info(f"Reading {reading_id} marked as delivered")
         else:
@@ -287,7 +287,8 @@ async def handle_telegram_update(update: dict):
             logger.debug(f"Reading saved with id={reading_id}")
         except Exception as e:
             logger.exception(f"Error saving reading for telegram_id={telegram_id}: {e}")
-            # Continue to try sending even if saving fails
+            # Even if saving fails, we still try to deliver to the user
+            # so they don't experience a complete failure
         finally:
             session.close()
             logger.debug("Database session closed")
