@@ -594,15 +594,86 @@ async def handle_general_question(session, user: User, chat_id: int, text: str):
 
 
 async def route_message(session, user: User, chat_id: int, text: str):
-    """Route message based on user state"""
+    """
+    Route message based on user state and intent classification.
+    Uses intent classification for users with charts to enable conversational flow.
+    """
     logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
     
+    # For users in data collection states, use traditional state-based routing
     if user.state == STATE_AWAITING_BIRTH_DATA:
         await handle_awaiting_birth_data(session, user, chat_id, text)
+        return
     elif user.state == STATE_AWAITING_CLARIFICATION:
         await handle_awaiting_clarification(session, user, chat_id, text)
-    elif user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
-        await handle_chatting_about_chart(session, user, chat_id, text)
+        return
+    
+    # For users with charts, use intent-based routing for conversational flow
+    if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
+        try:
+            # Classify intent
+            intent_result = classify_intent(text)
+            intent = intent_result.get("intent", "unknown")
+            confidence = intent_result.get("confidence", 0.0)
+            
+            logger.info(f"Intent classified: {intent} (confidence: {confidence})")
+            
+            # Route based on intent
+            if intent == "provide_birth_data":
+                # User wants to provide new birth data (maybe for a new profile)
+                logger.info("User providing new birth data, switching to awaiting_birth_data state")
+                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                await handle_awaiting_birth_data(session, user, chat_id, text)
+                
+            elif intent == "ask_about_chart":
+                # User asking about their chart - use assistant mode
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+            elif intent == "ask_general_question":
+                # General astrology question
+                await handle_general_question(session, user, chat_id, text)
+                
+            elif intent == "meta_conversation":
+                # Casual conversation, greetings
+                await handle_meta_conversation(session, user, chat_id, text)
+                
+            elif intent == "new_profile_request":
+                # User wants to create a new profile
+                await send_telegram_message(
+                    chat_id,
+                    "Отлично! Давай создадим новый профиль. Отправь мне данные рождения: дату, время и место."
+                )
+                # Switch to awaiting birth data state but remember we're creating a new profile
+                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                
+            elif intent == "switch_profile":
+                # User wants to switch profiles
+                profiles = list_user_profiles(session, user.telegram_id)
+                if len(profiles) <= 1:
+                    await send_telegram_message(
+                        chat_id,
+                        "У тебя пока только один профиль. Хочешь создать ещё один?"
+                    )
+                else:
+                    await handle_profiles_command(session, user, chat_id)
+                    await send_telegram_message(
+                        chat_id,
+                        "Выбери профиль, назвав его имя или номер."
+                    )
+                    
+            elif intent == "clarify_birth_data":
+                # Clarification in non-clarification state - treat as regular question
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+            else:
+                # Unknown or low confidence - default to chatting about chart
+                logger.warning(f"Unknown or low confidence intent, defaulting to chart chat")
+                await handle_chatting_about_chart(session, user, chat_id, text)
+                
+        except Exception as e:
+            logger.exception(f"Error in intent-based routing: {e}")
+            # Fallback to traditional routing
+            await handle_chatting_about_chart(session, user, chat_id, text)
     else:
         logger.error(f"Unknown user state: {user.state}")
         await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
