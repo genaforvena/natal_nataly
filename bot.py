@@ -166,7 +166,11 @@ async def handle_telegram_update(update: dict):
             logger.debug("Database operations completed successfully")
         except Exception as e:
             logger.exception(f"Database error for telegram_id={telegram_id}: {e}")
-            raise
+            await send_telegram_message(
+                chat_id,
+                "An error occurred while saving your data. Please try again later."
+            )
+            return {"ok": True}
         finally:
             session.close()
             logger.debug("Database session closed")

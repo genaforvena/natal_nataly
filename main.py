@@ -47,4 +47,5 @@ async def telegram_webhook(request: Request):
         return result
     except Exception as e:
         logger.exception(f"Error processing webhook: {e}")
-        return {"ok": False, "error": str(e)}
+        # Return generic error to client, detailed error is in logs
+        return {"ok": False, "error": "Internal server error"}
