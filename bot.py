@@ -284,6 +284,7 @@ def list_user_profiles(session, telegram_id: str):
 def build_agent_context(session, user: User, profile: AstroProfile = None) -> dict:
     """
     Build context for assistant response.
+    Uses unified UserNatalChart as source of truth if available.
     
     Args:
         session: Database session
@@ -302,8 +303,24 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
             "assistant_mode": user.assistant_mode
         }
         
+        # First, try to get chart from unified UserNatalChart table (source of truth)
+        user_chart = session.query(UserNatalChart).filter_by(
+            telegram_id=user.telegram_id,
+            is_active=True
+        ).order_by(UserNatalChart.created_at.desc()).first()
+        
+        if user_chart:
+            context["natal_chart"] = json.loads(user_chart.chart_json)
+            context["chart_source"] = user_chart.source
+            context["chart_engine"] = user_chart.engine_version
+            logger.debug(f"Using chart from UserNatalChart: source={user_chart.source}")
+        elif profile and profile.natal_chart_json:
+            # Fallback to profile chart (legacy)
+            context["natal_chart"] = json.loads(profile.natal_chart_json)
+            context["chart_source"] = "profile_legacy"
+            logger.debug(f"Using chart from AstroProfile (legacy)")
+        
         if profile:
-            context["natal_chart"] = json.loads(profile.natal_chart_json) if profile.natal_chart_json else None
             context["profile_name"] = profile.name or "Self"
             
             # Get last 5 readings for context
@@ -748,32 +765,44 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
     logger.info(f"Handling chatting_about_chart for user {user.telegram_id}")
     
     try:
-        # Get active profile
-        profile = get_active_profile(session, user)
+        # First, try to get chart from unified UserNatalChart table (source of truth)
+        user_chart = session.query(UserNatalChart).filter_by(
+            telegram_id=user.telegram_id,
+            is_active=True
+        ).order_by(UserNatalChart.created_at.desc()).first()
         
-        if not profile or not profile.natal_chart_json:
-            # Fallback to legacy chart stored in user
-            if not user.natal_chart_json:
-                logger.error(f"User {user.telegram_id} in chatting state but no chart found")
-                await send_telegram_message(
-                    chat_id,
-                    "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова."
-                )
-                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
-                return
-            
-            # Create profile from legacy data if needed
-            chart = json.loads(user.natal_chart_json)
-            # We don't have birth data in this case, so we'll use what we have
-            logger.warning("Using legacy chart data without full birth data")
+        chart = None
+        if user_chart:
+            chart = json.loads(user_chart.chart_json)
+            logger.info(f"Using chart from UserNatalChart: source={user_chart.source}")
         else:
-            chart = json.loads(profile.natal_chart_json)
+            # Fallback to profile chart
+            profile = get_active_profile(session, user)
+            
+            if not profile or not profile.natal_chart_json:
+                # Fallback to legacy chart stored in user
+                if not user.natal_chart_json:
+                    logger.error(f"User {user.telegram_id} in chatting state but no chart found")
+                    await send_telegram_message(
+                        chat_id,
+                        "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова или используй /upload_chart."
+                    )
+                    update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                    return
+                
+                # Create profile from legacy data if needed
+                chart = json.loads(user.natal_chart_json)
+                # We don't have birth data in this case, so we'll use what we have
+                logger.warning("Using legacy chart data without full birth data")
+            else:
+                chart = json.loads(profile.natal_chart_json)
         
         # Update state to chatting_about_chart if it was has_chart
         if user.state == STATE_HAS_CHART:
             update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
         
         # Build context for assistant
+        profile = get_active_profile(session, user)
         context = build_agent_context(session, user, profile)
         
         # Get assistant response using new assistant mode
