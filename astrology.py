@@ -10,6 +10,14 @@ HOUSE_SYSTEM = b'P'  # Placidus house system
 swe.set_ephe_path(EPHE_PATH)
 logger.info(f"Swiss Ephemeris path set to: {EPHE_PATH}")
 
+# Get Swiss Ephemeris version for tracking
+try:
+    SWISSEPH_VERSION = swe.version
+    logger.info(f"Swiss Ephemeris version: {SWISSEPH_VERSION}")
+except:
+    SWISSEPH_VERSION = "unknown"
+    logger.warning("Could not determine Swiss Ephemeris version")
+
 # Zodiac signs
 ZODIAC_SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", 
@@ -87,3 +95,8 @@ def generate_natal_chart(dob: str, time: str, lat: float, lng: float) -> dict:
     except Exception as e:
         logger.exception(f"Failed to generate natal chart: {str(e)}")
         raise Exception(f"Failed to generate natal chart: {str(e)}")
+
+
+def get_engine_version() -> str:
+    """Get the version of the astrology engine (Swiss Ephemeris)"""
+    return SWISSEPH_VERSION

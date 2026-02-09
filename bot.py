@@ -3,11 +3,26 @@ import json
 import httpx
 import logging
 from datetime import datetime, timezone
-from astrology import generate_natal_chart
+from astrology import generate_natal_chart, get_engine_version
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
 from models import User, BirthData, Reading, AstroProfile
 from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
+from debug import (
+    DEBUG_MODE, 
+    log_pipeline_stage_1_raw_input,
+    log_pipeline_stage_2_parsed_data,
+    log_pipeline_stage_3_normalized_data,
+    log_pipeline_stage_4_chart_generated,
+    log_pipeline_stage_5_reading_sent,
+    log_pipeline_error,
+    store_natal_chart,
+    validate_timezone,
+    track_reading_prompt,
+    create_debug_session,
+    complete_debug_session
+)
+from debug_commands import handle_debug_command
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -345,9 +360,17 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
     
+    # Stage 1: Log raw input
+    session_id = log_pipeline_stage_1_raw_input(user.telegram_id, text)
+    if DEBUG_MODE:
+        create_debug_session(user.telegram_id, session_id)
+    
     try:
         # Use LLM to extract birth data from free-form text
         birth_data = extract_birth_data(text)
+        
+        # Stage 2: Log parsed data from LLM
+        log_pipeline_stage_2_parsed_data(session_id, birth_data)
         
         # Check if any required fields are missing
         missing = birth_data.get("missing_fields", [])
@@ -366,11 +389,47 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         if not all([birth_data.get("dob"), birth_data.get("time"), 
                    birth_data.get("lat") is not None, birth_data.get("lng") is not None]):
             logger.warning("Birth data extraction returned data but with null values")
+            log_pipeline_error(session_id, "Birth data extraction returned null values")
             await send_telegram_message(
                 chat_id,
                 "Пожалуйста, укажите дату рождения (YYYY-MM-DD), время (HH:MM) и место (город или координаты)."
             )
             return
+        
+        # Stage 3: Normalize and validate data
+        # Validate timezone
+        tz_validation = validate_timezone(
+            birth_data["lat"],
+            birth_data["lng"],
+            birth_data.get("timezone")
+        )
+        
+        # Create normalized birth data
+        normalized_birth_data = {
+            "dob": birth_data["dob"],
+            "time": birth_data["time"],
+            "lat": birth_data["lat"],
+            "lng": birth_data["lng"],
+            "timezone": tz_validation["timezone"],
+            "timezone_source": tz_validation["source"],
+            "timezone_validation_status": tz_validation["validation_status"]
+        }
+        
+        # Calculate UTC and local times
+        # For now, use simple datetime parsing (could be enhanced with proper timezone handling)
+        birth_datetime_local = datetime.strptime(f"{birth_data['dob']} {birth_data['time']}", "%Y-%m-%d %H:%M")
+        birth_datetime_utc = birth_datetime_local  # Placeholder - should calculate proper UTC
+        
+        log_pipeline_stage_3_normalized_data(
+            session_id,
+            normalized_birth_data,
+            birth_datetime_utc,
+            birth_datetime_local,
+            tz_validation["timezone"],
+            tz_validation["source"],
+            tz_validation["validation_status"],
+            "user_input"
+        )
         
         # Generate natal chart
         logger.info(f"Generating natal chart for user {user.telegram_id}")
@@ -381,8 +440,23 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             birth_data["lng"]
         )
         
+        # Stage 4: Store natal chart with versioning
+        chart_id = store_natal_chart(
+            user.telegram_id,
+            birth_data,
+            chart,
+            get_engine_version(),
+            "SE 2.10"  # Swiss Ephemeris version
+        )
+        
+        log_pipeline_stage_4_chart_generated(session_id, chart_id)
+        
         # Create profile and set as active
         create_and_activate_profile(session, user, birth_data, chart)
+        
+        # Complete debug session
+        if DEBUG_MODE:
+            complete_debug_session(session_id, natal_chart_id=chart_id)
         
         # Send confirmation message
         await send_telegram_message(
@@ -394,6 +468,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         
     except Exception as e:
         logger.exception(f"Error handling awaiting_birth_data: {e}")
+        log_pipeline_error(session_id, str(e))
         await send_telegram_message(
             chat_id,
             "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
@@ -727,6 +802,15 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
+                # Check for debug commands
+                async def send_msg(msg):
+                    await send_telegram_message(chat_id, msg)
+                
+                if await handle_debug_command(telegram_id, text, send_msg):
+                    logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
+                    return {"ok": True}
+                
+                # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")

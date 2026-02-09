@@ -56,3 +56,94 @@ class Reading(Base):
     delivered = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     delivered_at = Column(DateTime, nullable=True)
+    # LLM prompt tracking for reproducibility
+    prompt_name = Column(String, nullable=True)  # Name of prompt template used
+    prompt_hash = Column(String, nullable=True)  # Hash of prompt content for versioning
+    model_used = Column(String, nullable=True)  # LLM model identifier
+
+
+# ============================================================================
+# DEBUG MODE MODELS - Debuggable Nataly
+# ============================================================================
+
+class PipelineLog(Base):
+    """
+    Stores debug information for each stage of the pipeline.
+    Enables full trace of raw input → parsed data → normalized data → chart → reading.
+    """
+    __tablename__ = "pipeline_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False)
+    session_id = Column(String, nullable=False)  # Unique ID for tracking a complete pipeline run
+    
+    # Stage 1: Raw Input
+    raw_user_message = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Stage 2: Parsed Birth Data (LLM output)
+    parsed_birth_data_json = Column(Text, nullable=True)  # Complete LLM response
+    
+    # Stage 3: Normalized Birth Data
+    normalized_birth_data_json = Column(Text, nullable=True)  # After system validation
+    birth_datetime_utc = Column(DateTime, nullable=True)
+    birth_datetime_local = Column(DateTime, nullable=True)
+    timezone = Column(String, nullable=True)
+    timezone_source = Column(String, nullable=True)  # api|fallback|manual
+    timezone_validation_status = Column(String, nullable=True)  # MATCH|MISMATCH
+    coordinates_source = Column(String, nullable=True)
+    
+    # Stage 4: Astrology Engine Output
+    natal_chart_id = Column(Integer, ForeignKey('natal_charts.id'), nullable=True)
+    
+    # Pipeline status
+    stage_completed = Column(String, nullable=True)  # raw_input|parsed|normalized|chart_generated|reading_sent
+    error_message = Column(Text, nullable=True)
+
+
+class NatalChart(Base):
+    """
+    Stores complete natal chart data with versioning.
+    Source of truth for all astrological calculations.
+    """
+    __tablename__ = "natal_charts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False)
+    
+    # Complete chart data
+    birth_data_json = Column(Text, nullable=False)  # DOB, time, lat, lng
+    natal_chart_json = Column(Text, nullable=False)  # Complete chart: planets, houses, aspects, angles
+    
+    # Versioning for reproducibility
+    engine_version = Column(String, nullable=True)  # pyswisseph version
+    ephemeris_version = Column(String, nullable=True)  # Swiss Ephemeris data version
+    
+    # Metadata
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    chart_hash = Column(String, nullable=True)  # Hash of chart for quick comparison
+    
+    # Additional raw ephemeris data for advanced debugging
+    raw_ephemeris_data = Column(Text, nullable=True)
+
+
+class DebugSession(Base):
+    """
+    Tracks complete debug sessions for developer analysis.
+    Links all pipeline stages together for easy reproduction.
+    """
+    __tablename__ = "debug_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, unique=True, nullable=False)
+    telegram_id = Column(String, nullable=False)
+    
+    # Pipeline references
+    pipeline_log_id = Column(Integer, ForeignKey('pipeline_logs.id'), nullable=True)
+    natal_chart_id = Column(Integer, ForeignKey('natal_charts.id'), nullable=True)
+    reading_id = Column(Integer, ForeignKey('readings.id'), nullable=True)
+    
+    # Session metadata
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=True)  # in_progress|completed|failed
