@@ -24,7 +24,7 @@ from debug import (
 )
 from debug_commands import handle_debug_command
 from user_commands import handle_user_command
-from chart_parser import parse_uploaded_chart, validate_chart_data
+from chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIGINAL_INPUT_LENGTH
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -630,7 +630,7 @@ async def handle_awaiting_chart_upload(session, user: User, chat_id: int, text: 
             telegram_id=user.telegram_id,
             chart_json=json.dumps(chart, ensure_ascii=False),
             source="uploaded",
-            original_input=text[:1000],  # Store first 1000 chars
+            original_input=text[:MAX_ORIGINAL_INPUT_LENGTH],  # Store first N chars
             engine_version=chart.get("engine_version", "user_uploaded"),
             is_active=True
         )

@@ -53,7 +53,7 @@ async def handle_my_data_command(telegram_id: str, send_message_func) -> bool:
                 chart_data = json.loads(user_chart.chart_json)
                 
                 response += "**📈 Natal Chart:**\n"
-                response += f"• Source: {user_chart.source.capitalize()}\n"
+                response += f"• Chart Source: {user_chart.source.capitalize()}\n"
                 response += f"• Engine: {user_chart.engine_version}\n"
                 response += f"• Created: {user_chart.created_at.strftime('%Y-%m-%d %H:%M UTC')}\n"
                 

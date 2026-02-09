@@ -9,6 +9,9 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MAX_ORIGINAL_INPUT_LENGTH = 1000  # Maximum characters to store from original input
+
 # Zodiac signs mapping
 ZODIAC_SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", 
@@ -161,7 +164,7 @@ def parse_astro_seek_format(text: str) -> Dict:
         "houses": houses if houses else {},
         "aspects": aspects,
         "source": "uploaded",
-        "original_input": text[:500],  # Store first 500 chars of original
+        "original_input": text[:MAX_ORIGINAL_INPUT_LENGTH],  # Store first N chars of original
         "engine_version": "user_uploaded",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -240,9 +243,9 @@ def validate_chart_data(chart: Dict) -> bool:
         if planet_data["sign"] not in ZODIAC_SIGNS:
             raise ValueError(f"Invalid zodiac sign for {planet_name}: {planet_data['sign']}")
         
-        # Validate degree (0-30)
+        # Validate degree (0 to less than 30)
         if not (0 <= planet_data["deg"] < 30):
-            raise ValueError(f"Invalid degree for {planet_name}: {planet_data['deg']} (must be 0-30)")
+            raise ValueError(f"Invalid degree for {planet_name}: {planet_data['deg']} (must be 0-29.99)")
         
         # Validate house (1-12)
         if not (1 <= planet_data["house"] <= 12):
