@@ -171,7 +171,14 @@ async def handle_debug_chart(telegram_id: str, send_message_func):
             response += chart_json_str
             response += "\n```"
             
-            await send_message_func(response)
+            # Check if response is too long for Telegram
+            if len(response) > 4000:
+                # Send truncated version with note
+                response_truncated = response[:3900] + "\n... (truncated due to length)\n```\n\n"
+                response_truncated += "💡 Tip: Use `/debug_pipeline` to see full session data."
+                await send_message_func(response_truncated)
+            else:
+                await send_message_func(response)
             
         finally:
             session.close()

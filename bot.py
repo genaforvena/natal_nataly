@@ -416,9 +416,11 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         }
         
         # Calculate UTC and local times
-        # For now, use simple datetime parsing (could be enhanced with proper timezone handling)
+        # TODO: Implement proper UTC conversion using timezone from tz_validation
+        # Currently just using local time as placeholder
         birth_datetime_local = datetime.strptime(f"{birth_data['dob']} {birth_data['time']}", "%Y-%m-%d %H:%M")
-        birth_datetime_utc = birth_datetime_local  # Placeholder - should calculate proper UTC
+        # Note: This is a placeholder. Real UTC conversion requires proper timezone handling
+        birth_datetime_utc = birth_datetime_local  # FIXME: Should convert using validated timezone
         
         log_pipeline_stage_3_normalized_data(
             session_id,
@@ -592,7 +594,13 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Track LLM prompt for reproducibility
         from llm import MODEL, get_prompt
         try:
-            prompt_content = get_prompt(f"{prompt_name}.system") if user.assistant_mode else get_prompt("astrologer_chat.system")
+            # Use correct prompt name based on mode
+            if user.assistant_mode:
+                prompt_file = "assistant_personality.system"
+            else:
+                prompt_file = "astrologer_chat.system"
+            
+            prompt_content = get_prompt(prompt_file)
             track_reading_prompt(reading_id, prompt_name, prompt_content, MODEL)
         except Exception as e:
             logger.warning(f"Failed to track reading prompt: {e}")

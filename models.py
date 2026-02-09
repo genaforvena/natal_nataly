@@ -75,7 +75,7 @@ class PipelineLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(String, nullable=False)
-    session_id = Column(String, nullable=False)  # Unique ID for tracking a complete pipeline run
+    session_id = Column(String, nullable=False)  # Not unique - multiple log entries per session across stages
     
     # Stage 1: Raw Input
     raw_user_message = Column(Text, nullable=True)

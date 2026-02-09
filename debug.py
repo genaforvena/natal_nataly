@@ -383,8 +383,8 @@ def track_reading_prompt(
 # DEBUG SESSION MANAGEMENT
 # ============================================================================
 
-def create_debug_session(telegram_id: str, session_id: str) -> int:
-    """Create a new debug session for tracking"""
+def create_debug_session(telegram_id: str, session_id: str) -> Optional[int]:
+    """Create a new debug session for tracking. Returns session ID or None."""
     if not DEBUG_MODE:
         return None
     
@@ -451,35 +451,59 @@ def validate_timezone(
     """
     Validate timezone by comparing geo lookup with LLM output.
     
+    NOTE: Current implementation uses simple coordinate-based estimation.
+    For production, integrate a proper timezone library like timezonefinder
+    with pytz or zoneinfo module.
+    
     Returns:
         dict with keys: timezone, source, validation_status
     """
     logger.info(f"Validating timezone for coordinates: lat={lat}, lng={lng}")
     
-    # For now, use a simple fallback approach
-    # In production, integrate with TimeZoneFinder or similar library
+    # Simple UTC offset estimation based on longitude
+    # TODO: Replace with proper timezone lookup using timezonefinder library
+    # This ignores timezone boundaries, DST, and actual timezone definitions
     try:
-        # Placeholder: Simple UTC offset estimation based on longitude
-        # This should be replaced with proper timezone lookup
+        # Placeholder: Simple UTC offset estimation
+        # Real implementation should use: from timezonefinder import TimezoneFinder
         estimated_offset_hours = int(lng / 15)
         estimated_tz = f"UTC{estimated_offset_hours:+d}"
         
+        # If no LLM timezone provided, use estimated
+        if not llm_timezone:
+            return {
+                "timezone": estimated_tz,
+                "source": "fallback",
+                "validation_status": "NO_VALIDATION",
+                "estimated_tz": estimated_tz,
+                "llm_tz": None,
+                "note": "Simple coordinate-based estimation. Use proper timezone library for production."
+            }
+        
+        # Compare LLM timezone with estimation
+        # Note: This will often show MISMATCH due to simplified estimation
         validation_status = "MATCH" if llm_timezone == estimated_tz else "MISMATCH"
         
-        if llm_timezone and validation_status == "MISMATCH":
-            logger.warning(f"Timezone mismatch: LLM={llm_timezone}, Estimated={estimated_tz}")
+        if validation_status == "MISMATCH":
+            logger.warning(
+                f"Timezone mismatch (simplified estimation): "
+                f"LLM={llm_timezone}, Estimated={estimated_tz}. "
+                f"This may be due to simplified timezone logic. "
+                f"Consider implementing proper timezone lookup."
+            )
         
         return {
-            "timezone": llm_timezone or estimated_tz,
-            "source": "api" if llm_timezone else "fallback",
-            "validation_status": validation_status if llm_timezone else "NO_VALIDATION",
+            "timezone": llm_timezone,  # Use LLM timezone as it's likely more accurate
+            "source": "llm",  # Changed from "api" to be more accurate
+            "validation_status": validation_status,
             "estimated_tz": estimated_tz,
-            "llm_tz": llm_timezone
+            "llm_tz": llm_timezone,
+            "note": "Validation uses simplified estimation. MISMATCH may be false positive."
         }
     except Exception as e:
         logger.exception(f"Timezone validation failed: {e}")
         return {
-            "timezone": "UTC+0",
+            "timezone": llm_timezone or "UTC+0",
             "source": "fallback",
             "validation_status": "ERROR",
             "error": str(e)
