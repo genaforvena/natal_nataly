@@ -12,9 +12,16 @@ from models import User, BirthData
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# Validate bot token is configured
+if not TELEGRAM_TOKEN:
+    logger.error("TELEGRAM_BOT_TOKEN environment variable is not set!")
+else:
+    logger.info(f"Bot initialized with Telegram token configured")
+
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-logger.info(f"Bot initialized with Telegram API URL configured")
+logger.info(f"Telegram API URL configured")
 
 # Expected format:
 # DOB: YYYY-MM-DD
@@ -37,19 +44,28 @@ Lng: -74.0060"""
 async def send_telegram_message(chat_id: int, text: str):
     """Send a message to Telegram using HTTP API"""
     logger.debug(f"Sending message to chat_id={chat_id}, text_length={len(text)}")
+    
     try:
         async with httpx.AsyncClient() as client:
+            payload = {
+                "chat_id": chat_id,
+                "text": text
+            }
+            
             response = await client.post(
                 f"{TELEGRAM_API_URL}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": text
-                }
+                json=payload
             )
             # Check if the request was successful (2xx status codes)
             if response.is_success:
                 logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
                 return response
+            elif response.status_code == 404:
+                # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
+                # This is not a critical error - log it and return None without raising
+                logger.warning(f"Cannot send message to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
+                logger.debug(f"404 Response details: {response.text}")
+                return None
             else:
                 logger.error(f"Failed to send message to chat_id={chat_id}, status={response.status_code}, response={response.text}")
                 raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
@@ -146,11 +162,24 @@ async def handle_telegram_update(update: dict):
             return {"ok": True}
         
         message = update["message"]
+        
+        # Validate message structure before extracting data
+        if "chat" not in message or "id" not in message["chat"]:
+            logger.error(f"Invalid message structure: missing chat.id. Message keys: {message.keys()}")
+            return {"ok": True}
+        
+        if "from" not in message or "id" not in message["from"]:
+            logger.error(f"Invalid message structure: missing from.id. Message keys: {message.keys()}")
+            return {"ok": True}
+        
         chat_id = message["chat"]["id"]
         telegram_id = str(message["from"]["id"])
         text = message.get("text", "")
         
+        # Log detailed debug info to help diagnose issues
         logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
+        logger.debug(f"Chat type: {message['chat'].get('type', 'unknown')}")
+        logger.debug(f"Message ID: {message.get('message_id', 'unknown')}")
         # Log only message length, not the actual sensitive content
         logger.debug(f"Message length: {len(text)} characters")
         
