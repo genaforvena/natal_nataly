@@ -4,7 +4,7 @@
 
 1. Python 3.12+
 2. Telegram Bot Token from [@BotFather](https://t.me/botfather)
-3. OpenAI API Key
+3. LLM API Key (DeepSeek or Groq)
 
 ## Installation
 
@@ -16,7 +16,15 @@ pip install -r requirements.txt
 2. Create environment file `.env`:
 ```bash
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-OPENAI_API_KEY=your_openai_api_key_here
+
+# LLM Configuration (choose one)
+LLM_PROVIDER=groq  # or "deepseek"
+
+# If using Groq:
+GROQ_API_KEY=your_groq_api_key_here
+
+# If using DeepSeek:
+# DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ```
 
 3. Create ephemeris directory (required for pyswisseph):
@@ -135,10 +143,11 @@ Create the ephe directory:
 mkdir -p ephe
 ```
 
-### OpenAI API errors
-- Verify your API key is valid
-- Check your OpenAI account has credits
-- Ensure OPENAI_API_KEY environment variable is set
+### LLM API errors
+- Verify your API key is valid (GROQ_API_KEY or DEEPSEEK_API_KEY)
+- Check your account has credits
+- Ensure LLM_PROVIDER is set to "groq" or "deepseek"
+- Verify the corresponding API key environment variable is set
 
 ### Telegram webhook not receiving messages
 - Verify your server is publicly accessible
