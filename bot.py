@@ -58,10 +58,6 @@ async def send_telegram_message(chat_id: int, text: str):
             else:
                 logger.error(f"Failed to send message to chat_id={chat_id}, status={response.status_code}, response={response.text}")
                 raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
-    except httpx.HTTPError as e:
-        # Network-related errors (connection, timeout, etc.)
-        logger.exception(f"Network error sending Telegram message to chat_id={chat_id}: {e}")
-        raise
     except Exception as e:
         logger.exception(f"Error sending Telegram message to chat_id={chat_id}: {e}")
         raise
