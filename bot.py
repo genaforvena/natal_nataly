@@ -1,10 +1,10 @@
 import os
-import re
+import json
 import httpx
 import logging
 from datetime import datetime, timezone
 from astrology import generate_natal_chart
-from llm import interpret_chart
+from llm import extract_birth_data, generate_clarification_question, interpret_chart
 from db import SessionLocal
 from models import User, BirthData, Reading
 
@@ -22,24 +22,6 @@ else:
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 logger.info(f"Telegram API URL configured")
-
-# Expected format:
-# DOB: YYYY-MM-DD
-# Time: HH:MM
-# Lat: xx.xxxx
-# Lng: xx.xxxx
-
-FORMAT_EXAMPLE = """Invalid format. Please use:
-DOB: YYYY-MM-DD
-Time: HH:MM
-Lat: xx.xxxx
-Lng: xx.xxxx
-
-Example:
-DOB: 1990-05-15
-Time: 14:30
-Lat: 40.7128
-Lng: -74.0060"""
 
 async def send_telegram_message(chat_id: int, text: str):
     """Send a message to Telegram using HTTP API"""
@@ -73,38 +55,10 @@ async def send_telegram_message(chat_id: int, text: str):
         logger.exception(f"Error sending Telegram message to chat_id={chat_id}: {e}")
         raise
 
-def parse_birth_data(text: str):
-    """Parse birth data from user message"""
-    # Log only message length, not the actual sensitive content
-    logger.debug(f"Parsing birth data from message (length: {len(text)} chars)")
-    
-    dob_pattern = r"DOB:\s*(\d{4}-\d{2}-\d{2})"
-    time_pattern = r"Time:\s*(\d{2}:\d{2})"
-    lat_pattern = r"Lat:\s*([-]?\d+\.?\d*)"
-    lng_pattern = r"Lng:\s*([-]?\d+\.?\d*)"
-    
-    dob_match = re.search(dob_pattern, text, re.IGNORECASE)
-    time_match = re.search(time_pattern, text, re.IGNORECASE)
-    lat_match = re.search(lat_pattern, text, re.IGNORECASE)
-    lng_match = re.search(lng_pattern, text, re.IGNORECASE)
-    
-    if not all([dob_match, time_match, lat_match, lng_match]):
-        logger.warning(f"Failed to parse birth data: dob={bool(dob_match)}, time={bool(time_match)}, lat={bool(lat_match)}, lng={bool(lng_match)}")
-        return None
-    
-    result = {
-        "dob": dob_match.group(1),
-        "time": time_match.group(1),
-        "lat": float(lat_match.group(1)),
-        "lng": float(lng_match.group(1))
-    }
-    # Log only that parsing succeeded, not the actual sensitive data
-    logger.info(f"Birth data parsed successfully")
-    return result
 
-def upsert_user(session, telegram_id: str):
-    """Upsert user in database"""
-    logger.debug(f"Upserting user with telegram_id={telegram_id}")
+def get_or_create_user(session, telegram_id: str) -> User:
+    """Get existing user or create new one"""
+    logger.debug(f"Getting or creating user with telegram_id={telegram_id}")
     try:
         user = session.query(User).filter_by(telegram_id=telegram_id).first()
         if user:
@@ -112,18 +66,39 @@ def upsert_user(session, telegram_id: str):
             user.last_seen = datetime.now(timezone.utc)
         else:
             logger.info(f"Creating new user: {telegram_id}")
-            user = User(telegram_id=telegram_id)
+            user = User(telegram_id=telegram_id, state="awaiting_birth_data")
             session.add(user)
         session.commit()
-        logger.debug(f"User upserted successfully: {telegram_id}")
+        logger.debug(f"User retrieved/created successfully: {telegram_id}, state={user.state}")
         return user
     except Exception as e:
-        logger.exception(f"Error upserting user {telegram_id}: {e}")
+        logger.exception(f"Error getting/creating user {telegram_id}: {e}")
         raise
+
+
+def update_user_state(session, telegram_id: str, state: str, natal_chart_json: str = None, missing_fields: str = None):
+    """Update user state and optional fields"""
+    logger.debug(f"Updating user state: telegram_id={telegram_id}, new_state={state}")
+    try:
+        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        if user:
+            user.state = state
+            if natal_chart_json is not None:
+                user.natal_chart_json = natal_chart_json
+            if missing_fields is not None:
+                user.missing_fields = missing_fields
+            user.last_seen = datetime.now(timezone.utc)
+            session.commit()
+            logger.info(f"User state updated: {telegram_id} -> {state}")
+        else:
+            logger.warning(f"User {telegram_id} not found for state update")
+    except Exception as e:
+        logger.exception(f"Error updating user state {telegram_id}: {e}")
+        raise
+
 
 def save_birth_data(session, telegram_id: str, birth_data: dict):
     """Save birth data to database"""
-    # Log only that we're saving, not the actual sensitive data
     logger.debug(f"Saving birth data for telegram_id={telegram_id}")
     try:
         birth_record = BirthData(
@@ -140,6 +115,7 @@ def save_birth_data(session, telegram_id: str, birth_data: dict):
     except Exception as e:
         logger.exception(f"Error saving birth data for {telegram_id}: {e}")
         raise
+
 
 def save_reading(session, telegram_id: str, reading_text: str, birth_data_id: int = None):
     """Save reading to database"""
@@ -159,6 +135,7 @@ def save_reading(session, telegram_id: str, reading_text: str, birth_data_id: in
         logger.exception(f"Error saving reading for {telegram_id}: {e}")
         raise
 
+
 def mark_reading_delivered(session, reading_id: int):
     """Mark a reading as delivered"""
     logger.debug(f"Marking reading {reading_id} as delivered")
@@ -175,18 +152,205 @@ def mark_reading_delivered(session, reading_id: int):
         logger.exception(f"Error marking reading {reading_id} as delivered: {e}")
         raise
 
+
+async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: str):
+    """Handle messages when user is in awaiting_birth_data state"""
+    logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
+    
+    try:
+        # Use LLM to extract birth data from free-form text
+        birth_data = extract_birth_data(text)
+        
+        # Check if any required fields are missing
+        missing = birth_data.get("missing_fields", [])
+        
+        if missing:
+            logger.info(f"Missing fields detected: {missing}")
+            # Update state to awaiting_clarification
+            update_user_state(session, user.telegram_id, "awaiting_clarification", missing_fields=",".join(missing))
+            
+            # Generate clarification question
+            question = generate_clarification_question(missing, text)
+            await send_telegram_message(chat_id, question)
+            return
+        
+        # All data is present, validate it
+        if not all([birth_data.get("dob"), birth_data.get("time"), 
+                   birth_data.get("lat") is not None, birth_data.get("lng") is not None]):
+            logger.warning("Birth data extraction returned data but with null values")
+            await send_telegram_message(
+                chat_id,
+                "Пожалуйста, укажите дату рождения (YYYY-MM-DD), время (HH:MM) и место (город или координаты)."
+            )
+            return
+        
+        # Generate natal chart
+        logger.info(f"Generating natal chart for user {user.telegram_id}")
+        chart = generate_natal_chart(
+            birth_data["dob"],
+            birth_data["time"],
+            birth_data["lat"],
+            birth_data["lng"]
+        )
+        
+        # Save birth data
+        birth_record = save_birth_data(session, user.telegram_id, birth_data)
+        
+        # Store natal chart and update state
+        chart_json = json.dumps(chart)
+        update_user_state(session, user.telegram_id, "has_chart", natal_chart_json=chart_json)
+        
+        # Send confirmation message
+        await send_telegram_message(
+            chat_id,
+            "✨ Натальная карта готова.\nТеперь ты можешь задавать любые вопросы о себе."
+        )
+        
+        logger.info(f"Birth data processed successfully for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error handling awaiting_birth_data: {e}")
+        await send_telegram_message(
+            chat_id,
+            "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
+        )
+
+
+async def handle_awaiting_clarification(session, user: User, chat_id: int, text: str):
+    """Handle messages when user is in awaiting_clarification state"""
+    logger.info(f"Handling awaiting_clarification for user {user.telegram_id}")
+    
+    try:
+        # Extract data again from the clarification message
+        birth_data = extract_birth_data(text)
+        
+        # Check what was previously missing
+        previously_missing = user.missing_fields.split(",") if user.missing_fields else []
+        logger.debug(f"Previously missing fields: {previously_missing}")
+        
+        # Check if still missing anything
+        still_missing = birth_data.get("missing_fields", [])
+        
+        if still_missing:
+            logger.info(f"Still missing fields: {still_missing}")
+            # Update missing fields
+            update_user_state(session, user.telegram_id, "awaiting_clarification", missing_fields=",".join(still_missing))
+            
+            # Ask again
+            question = generate_clarification_question(still_missing, text)
+            await send_telegram_message(chat_id, question)
+            return
+        
+        # All data is now present
+        if not all([birth_data.get("dob"), birth_data.get("time"), 
+                   birth_data.get("lat") is not None, birth_data.get("lng") is not None]):
+            logger.warning("Birth data still incomplete after clarification")
+            await send_telegram_message(
+                chat_id,
+                "Пожалуйста, укажите все необходимые данные: дату, время и место рождения."
+            )
+            return
+        
+        # Generate natal chart
+        logger.info(f"Generating natal chart for user {user.telegram_id}")
+        chart = generate_natal_chart(
+            birth_data["dob"],
+            birth_data["time"],
+            birth_data["lat"],
+            birth_data["lng"]
+        )
+        
+        # Save birth data
+        birth_record = save_birth_data(session, user.telegram_id, birth_data)
+        
+        # Store natal chart and update state
+        chart_json = json.dumps(chart)
+        update_user_state(session, user.telegram_id, "has_chart", natal_chart_json=chart_json, missing_fields="")
+        
+        # Send confirmation message
+        await send_telegram_message(
+            chat_id,
+            "✨ Натальная карта готова.\nТеперь ты можешь задавать любые вопросы о себе."
+        )
+        
+        logger.info(f"Clarification completed successfully for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error handling awaiting_clarification: {e}")
+        await send_telegram_message(
+            chat_id,
+            "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
+        )
+
+
+async def handle_chatting_about_chart(session, user: User, chat_id: int, text: str):
+    """Handle messages when user has a chart and is asking questions"""
+    logger.info(f"Handling chatting_about_chart for user {user.telegram_id}")
+    
+    try:
+        # Load natal chart from database
+        if not user.natal_chart_json:
+            logger.error(f"User {user.telegram_id} in chatting state but no chart found")
+            await send_telegram_message(
+                chat_id,
+                "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова."
+            )
+            update_user_state(session, user.telegram_id, "awaiting_birth_data")
+            return
+        
+        chart = json.loads(user.natal_chart_json)
+        
+        # Update state to chatting_about_chart if it was has_chart
+        if user.state == "has_chart":
+            update_user_state(session, user.telegram_id, "chatting_about_chart")
+        
+        # Get LLM interpretation based on user's question
+        logger.info(f"Getting chart interpretation for user question")
+        reading = interpret_chart(chart, question=text)
+        
+        # Save reading to database
+        reading_record = save_reading(session, user.telegram_id, reading)
+        reading_id = reading_record.id
+        
+        # Send reading to user
+        response = await send_telegram_message(chat_id, reading)
+        
+        # Mark as delivered if successful
+        if response is not None:
+            mark_reading_delivered(session, reading_id)
+        
+        logger.info(f"Chart interpretation sent successfully for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error handling chatting_about_chart: {e}")
+        await send_telegram_message(
+            chat_id,
+            "Произошла ошибка при обработке вопроса. Пожалуйста, попробуйте ещё раз."
+        )
+
+
+async def route_message(session, user: User, chat_id: int, text: str):
+    """Route message based on user state"""
+    logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
+    
+    if user.state == "awaiting_birth_data":
+        await handle_awaiting_birth_data(session, user, chat_id, text)
+    elif user.state == "awaiting_clarification":
+        await handle_awaiting_clarification(session, user, chat_id, text)
+    elif user.state in ["has_chart", "chatting_about_chart"]:
+        await handle_chatting_about_chart(session, user, chat_id, text)
+    else:
+        logger.error(f"Unknown user state: {user.state}")
+        await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
+        update_user_state(session, user.telegram_id, "awaiting_birth_data")
+
+
 async def handle_telegram_update(update: dict):
-    '''
+    """
     Entry point for Telegram webhook updates.
-    Copilot agent should:
-    - parse user message
-    - validate input
-    - call astrology.generate_natal_chart()
-    - call llm.interpret_chart()
-    - send reply to Telegram
-    '''
+    Routes messages based on user state.
+    """
     logger.info(f"=== Processing Telegram update ===")
-    # Log only update type, not the full payload with sensitive data
     update_type = "message" if "message" in update else "other"
     logger.debug(f"Update type: {update_type}")
     
@@ -198,131 +362,36 @@ async def handle_telegram_update(update: dict):
         
         message = update["message"]
         
-        # Validate message structure before extracting data
+        # Validate message structure
         if "chat" not in message or "id" not in message["chat"]:
-            logger.error(f"Invalid message structure: missing chat.id. Message keys: {message.keys()}")
+            logger.error(f"Invalid message structure: missing chat.id")
             return {"ok": True}
         
         if "from" not in message or "id" not in message["from"]:
-            logger.error(f"Invalid message structure: missing from.id. Message keys: {message.keys()}")
+            logger.error(f"Invalid message structure: missing from.id")
             return {"ok": True}
         
         chat_id = message["chat"]["id"]
         telegram_id = str(message["from"]["id"])
         text = message.get("text", "")
         
-        # Log detailed debug info to help diagnose issues
         logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
-        logger.debug(f"Chat type: {message['chat'].get('type', 'unknown')}")
-        logger.debug(f"Message ID: {message.get('message_id', 'unknown')}")
-        # Log only message length, not the actual sensitive content
         logger.debug(f"Message length: {len(text)} characters")
         
-        # Parse birth data
-        birth_data = parse_birth_data(text)
-        
-        if not birth_data:
-            logger.info(f"Invalid birth data format from telegram_id={telegram_id}")
-            await send_telegram_message(chat_id, FORMAT_EXAMPLE)
-            return {"ok": True}
-        
-        # Store user and birth data
+        # Get or create user
         session = SessionLocal()
-        birth_data_id = None
         try:
-            logger.debug("Opening database session")
-            upsert_user(session, telegram_id)
-            birth_record = save_birth_data(session, telegram_id, birth_data)
-            birth_data_id = birth_record.id
-            logger.debug("Database operations completed successfully")
-        except Exception as e:
-            logger.exception(f"Database error for telegram_id={telegram_id}: {e}")
-            await send_telegram_message(
-                chat_id,
-                "An error occurred while saving your data. Please try again later."
-            )
-            return {"ok": True}
-        finally:
-            session.close()
-            logger.debug("Database session closed")
-        
-        # Generate natal chart
-        try:
-            logger.info(f"Generating natal chart for telegram_id={telegram_id}")
-            chart = generate_natal_chart(
-                birth_data["dob"],
-                birth_data["time"],
-                birth_data["lat"],
-                birth_data["lng"]
-            )
-            logger.info(f"Natal chart generated successfully for telegram_id={telegram_id}")
-        except Exception as e:
-            logger.exception(f"Chart generation error for telegram_id={telegram_id}: {e}")
-            await send_telegram_message(
-                chat_id, 
-                "Failed to generate natal chart. Please verify your birth date and time are correct."
-            )
-            return {"ok": True}
-        
-        # Get LLM interpretation
-        try:
-            logger.info(f"Getting LLM interpretation for telegram_id={telegram_id}")
-            reading = interpret_chart(chart)
-            logger.info(f"LLM interpretation completed for telegram_id={telegram_id}")
-        except Exception as e:
-            logger.exception(f"LLM interpretation error for telegram_id={telegram_id}: {e}")
-            await send_telegram_message(
-                chat_id,
-                "Unable to generate your astrological reading at this time. Please try again later."
-            )
-            return {"ok": True}
-        
-        # Save reading to database before attempting to send
-        session = SessionLocal()
-        reading_id = None
-        try:
-            logger.debug("Opening database session to save reading")
-            reading_record = save_reading(session, telegram_id, reading, birth_data_id)
-            reading_id = reading_record.id
-            logger.debug(f"Reading saved with id={reading_id}")
-        except Exception as e:
-            logger.exception(f"Error saving reading for telegram_id={telegram_id}: {e}")
-            # Even if saving fails, we still try to deliver to the user
-            # so they don't experience a complete failure
-        finally:
-            session.close()
-            logger.debug("Database session closed")
-        
-        # Send reading to user
-        try:
-            logger.info(f"Sending reading to telegram_id={telegram_id}")
-            response = await send_telegram_message(chat_id, reading)
+            user = get_or_create_user(session, telegram_id)
             
-            # Check if message was delivered successfully
-            if response is not None and reading_id is not None:
-                # Message was sent successfully, mark as delivered
-                session = SessionLocal()
-                try:
-                    mark_reading_delivered(session, reading_id)
-                except Exception as e:
-                    logger.exception(f"Error marking reading as delivered: {e}")
-                finally:
-                    session.close()
-            elif response is None:
-                # Message was not delivered (404 or other non-success)
-                logger.warning(f"Reading saved but not delivered to telegram_id={telegram_id}. User can retrieve it later.")
+            # Route message based on state
+            await route_message(session, user, chat_id, text)
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
-        except Exception as e:
-            logger.exception(f"Failed to send reading to telegram_id={telegram_id}: {e}")
-            # Reading is saved in database, so it's not lost
-            logger.info(f"Reading saved in database (id={reading_id}) but delivery failed for telegram_id={telegram_id}")
+        finally:
+            session.close()
         
-        # Always return ok: True to Telegram to acknowledge webhook receipt
-        # This prevents Telegram from retrying the webhook repeatedly
         return {"ok": True}
         
     except Exception as e:
-        # Log error but return ok to Telegram
         logger.exception(f"Critical error handling update: {e}")
         return {"ok": True}

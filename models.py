@@ -8,6 +8,9 @@ class User(Base):
     telegram_id = Column(String, primary_key=True)
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    state = Column(String, default="awaiting_birth_data")  # awaiting_birth_data, awaiting_clarification, has_chart, chatting_about_chart
+    natal_chart_json = Column(Text, nullable=True)  # Store generated natal chart
+    missing_fields = Column(String, nullable=True)  # Comma-separated list of missing fields
 
 class BirthData(Base):
     __tablename__ = "birth_data"
