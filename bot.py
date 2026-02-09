@@ -47,7 +47,7 @@ async def send_telegram_message(chat_id: int, text: str):
                 }
             )
             # Check if the request was successful (2xx status codes)
-            if response.status_code >= 200 and response.status_code < 300:
+            if response.is_success:
                 logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
                 return response
             else:
@@ -221,6 +221,8 @@ async def handle_telegram_update(update: dict):
             # Cannot notify user since message sending failed
             # This is typically due to invalid bot token, chat_id, or Telegram API issues
         
+        # Always return ok: True to Telegram to acknowledge webhook receipt
+        # This prevents Telegram from retrying the webhook repeatedly
         return {"ok": True}
         
     except Exception as e:
