@@ -32,65 +32,84 @@ async def handle_my_data_command(telegram_id: str, send_message_func) -> bool:
             user = session.query(User).filter_by(telegram_id=telegram_id).first()
             
             if not user:
-                await send_message_func("У тебя пока нет профиля. Отправь данные рождения, чтобы создать профиль.")
+                await send_message_func("У тебя пока нет профиля. Отправь данные рождения или используй /upload_chart.")
                 return True
+            
+            # Get active chart from unified table
+            user_chart = session.query(UserNatalChart).filter_by(
+                telegram_id=telegram_id,
+                is_active=True
+            ).order_by(UserNatalChart.created_at.desc()).first()
             
             # Get active profile
             profile = None
             if user.active_profile_id:
                 profile = session.query(AstroProfile).filter_by(id=user.active_profile_id).first()
             
-            if not profile:
-                await send_message_func("У тебя пока нет активного профиля. Отправь данные рождения, чтобы создать профиль.")
-                return True
+            response = "📊 **Your Data**\n\n"
             
-            # Get normalized birth data from latest pipeline log
-            pipeline_log = session.query(PipelineLog).filter_by(
-                telegram_id=telegram_id
-            ).order_by(PipelineLog.timestamp.desc()).first()
+            # Show chart source info first
+            if user_chart:
+                chart_data = json.loads(user_chart.chart_json)
+                
+                response += "**📈 Natal Chart:**\n"
+                response += f"• Source: {user_chart.source.capitalize()}\n"
+                response += f"• Engine: {user_chart.engine_version}\n"
+                response += f"• Created: {user_chart.created_at.strftime('%Y-%m-%d %H:%M UTC')}\n"
+                
+                # Show key planets
+                if "Sun" in chart_data.get("planets", {}):
+                    sun = chart_data["planets"]["Sun"]
+                    response += f"• Sun: {sun['deg']:.2f}° {sun['sign']}, House {sun['house']}\n"
+                
+                if "Moon" in chart_data.get("planets", {}):
+                    moon = chart_data["planets"]["Moon"]
+                    response += f"• Moon: {moon['deg']:.2f}° {moon['sign']}, House {moon['house']}\n"
+                
+                if "Ascendant" in chart_data.get("planets", {}):
+                    asc = chart_data["planets"]["Ascendant"]
+                    response += f"• Ascendant: {asc['deg']:.2f}° {asc['sign']}\n"
+                
+                response += "\n"
             
-            # Parse birth data
-            birth_data = json.loads(profile.birth_data_json)
-            
-            # Build response with normalized data if available
-            response = "📊 **Your Birth Data**\n\n"
-            
-            response += f"**Date (local):** {birth_data.get('dob', 'N/A')}\n"
-            response += f"**Time (local):** {birth_data.get('time', 'N/A')}\n"
-            response += f"**Latitude:** {birth_data.get('lat', 'N/A')}\n"
-            response += f"**Longitude:** {birth_data.get('lng', 'N/A')}\n"
+            # Show birth data if from profile
+            if profile:
+                birth_data = json.loads(profile.birth_data_json)
+                
+                response += "**🎂 Birth Data:**\n"
+                response += f"• Date (local): {birth_data.get('dob', 'N/A')}\n"
+                response += f"• Time (local): {birth_data.get('time', 'N/A')}\n"
+                response += f"• Latitude: {birth_data.get('lat', 'N/A')}\n"
+                response += f"• Longitude: {birth_data.get('lng', 'N/A')}\n"
+            elif user_chart and user_chart.source == "uploaded":
+                response += "**🎂 Birth Data:**\n"
+                response += "Chart was uploaded by you (no birth data available)\n"
             
             # Add timezone information if available from pipeline log
-            if pipeline_log and pipeline_log.normalized_birth_data_json:
-                normalized_data = json.loads(pipeline_log.normalized_birth_data_json)
+            if profile:
+                pipeline_log = session.query(PipelineLog).filter_by(
+                    telegram_id=telegram_id
+                ).order_by(PipelineLog.timestamp.desc()).first()
                 
-                if normalized_data.get('timezone'):
-                    response += f"\n**Timezone:** {normalized_data['timezone']}\n"
-                    response += f"**Timezone Source:** {normalized_data.get('timezone_source', 'N/A')}\n"
-                
-                if pipeline_log.birth_datetime_local:
-                    response += f"**Local DateTime:** {pipeline_log.birth_datetime_local.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                
-                if pipeline_log.birth_datetime_utc:
-                    response += f"**UTC DateTime:** {pipeline_log.birth_datetime_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-                
-                if normalized_data.get('coordinates_source'):
-                    response += f"**Coordinates Source:** {normalized_data['coordinates_source']}\n"
+                if pipeline_log and pipeline_log.normalized_birth_data_json:
+                    normalized_data = json.loads(pipeline_log.normalized_birth_data_json)
+                    
+                    response += "\n**🌍 Timezone Info:**\n"
+                    if normalized_data.get('timezone'):
+                        response += f"• Timezone: {normalized_data['timezone']}\n"
+                        response += f"• Source: {normalized_data.get('timezone_source', 'N/A')}\n"
+                    
+                    if pipeline_log.birth_datetime_local:
+                        response += f"• Local DateTime: {pipeline_log.birth_datetime_local.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    
+                    if pipeline_log.birth_datetime_utc:
+                        response += f"• UTC DateTime: {pipeline_log.birth_datetime_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
             
-            # Add chart status
-            natal_chart = session.query(NatalChart).filter_by(
-                telegram_id=telegram_id
-            ).order_by(NatalChart.created_at.desc()).first()
-            
-            if natal_chart:
-                response += f"\n**Natal Chart Status:**\n"
-                response += f"✅ Chart generated\n"
-                if natal_chart.engine_version:
-                    response += f"**Engine version:** {natal_chart.engine_version}\n"
-                response += f"**Created at:** {natal_chart.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            else:
-                response += f"\n**Natal Chart Status:**\n"
-                response += f"❌ No chart generated yet\n"
+            if not user_chart and not profile:
+                response = "У тебя пока нет активной карты.\n\n"
+                response += "Ты можешь:\n"
+                response += "• Отправить данные рождения для создания карты\n"
+                response += "• Использовать /upload_chart для загрузки готовой карты"
             
             await send_message_func(response)
             return True
@@ -222,6 +241,18 @@ async def handle_my_readings_command(telegram_id: str, send_message_func, readin
                         response += f"**Model:** {reading.model_used}\n"
                     if reading.prompt_name:
                         response += f"**Prompt:** {reading.prompt_name}\n"
+                    
+                    # Show which chart was used
+                    # Find the closest chart created before this reading
+                    chart_used = session.query(UserNatalChart).filter(
+                        UserNatalChart.telegram_id == telegram_id,
+                        UserNatalChart.created_at <= reading.created_at
+                    ).order_by(UserNatalChart.created_at.desc()).first()
+                    
+                    if chart_used:
+                        response += f"**Chart Source:** {chart_used.source}\n"
+                        response += f"**Chart Created:** {chart_used.created_at.strftime('%Y-%m-%d %H:%M UTC')}\n"
+                    
                     response += f"\n{reading.reading_text}\n"
                     
                     await send_message_func(response)
@@ -360,8 +391,56 @@ async def handle_user_command(telegram_id: str, command: str, send_message_func)
         return await handle_edit_birth_command(telegram_id, send_message_func)
     elif cmd == "/upload_chart":
         return await handle_upload_chart_command(telegram_id, send_message_func)
+    elif cmd == "/help":
+        return await handle_help_command(telegram_id, send_message_func)
     
     return False
+
+
+async def handle_help_command(telegram_id: str, send_message_func) -> bool:
+    """
+    Handle /help command - Show available commands.
+    
+    Args:
+        telegram_id: User's Telegram ID
+        send_message_func: Async function to send messages
+        
+    Returns:
+        bool: True if command was handled successfully
+    """
+    logger.info(f"[USER_CMD] /help requested by {telegram_id}")
+    
+    try:
+        response = "🔮 **Nataly Bot - Available Commands**\n\n"
+        response += "**Chart Management:**\n"
+        response += "• Send birth data (DOB, Time, Lat, Lng) to create your chart\n"
+        response += "• `/upload_chart` - Upload your own natal chart\n"
+        response += "• `/edit_birth` - Update your birth data and regenerate chart\n\n"
+        
+        response += "**View Your Data:**\n"
+        response += "• `/my_data` - View your birth data and chart info\n"
+        response += "• `/my_chart_raw` - Get raw chart JSON data\n"
+        response += "• `/my_readings` - List all your readings\n"
+        response += "• `/my_readings <id>` - Get specific reading\n\n"
+        
+        response += "**Profiles:**\n"
+        response += "• `/profiles` - View and manage astro profiles\n\n"
+        
+        response += "**Questions:**\n"
+        response += "Ask me anything about your natal chart and I'll use AI to interpret it!\n\n"
+        
+        response += "💡 **Tips:**\n"
+        response += "• Charts can be generated or uploaded\n"
+        response += "• All readings use your saved chart\n"
+        response += "• Use /upload_chart if you have a chart from AstroSeek"
+        
+        await send_message_func(response)
+        return True
+        
+    except Exception as e:
+        logger.exception(f"Error handling /help command: {e}")
+        await send_message_func("Произошла ошибка при получении помощи.")
+        return True
 
 
 async def handle_upload_chart_command(telegram_id: str, send_message_func) -> bool:
