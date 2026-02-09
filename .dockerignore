@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+env/
+
+# Environment
+.env
+.env.local
+
+# Database
+*.sqlite
+*.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Scripts
+start.sh
+
+# Ephemeris (will be created in container)
+.ephe/
+ephe/
+
+# Test files
+TEST_PAYLOADS.md

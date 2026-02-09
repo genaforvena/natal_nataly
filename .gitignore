@@ -5,3 +5,4 @@ venv/
 .ephe/
 *.sqlite
 .DS_Store
+data/
