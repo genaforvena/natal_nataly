@@ -575,6 +575,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         context = build_agent_context(session, user, profile)
         
         # Get assistant response using new assistant mode
+        prompt_name = "assistant_response"
         if user.assistant_mode:
             logger.info(f"Using assistant mode for response")
             reading = generate_assistant_response(context, text)
@@ -582,10 +583,19 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
             # Fallback to legacy interpret_chart
             logger.info(f"Using legacy chart interpretation")
             reading = interpret_chart(chart, question=text)
+            prompt_name = "astrologer_chat"
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
         reading_id = reading_record.id
+        
+        # Track LLM prompt for reproducibility
+        from llm import MODEL, get_prompt
+        try:
+            prompt_content = get_prompt(f"{prompt_name}.system") if user.assistant_mode else get_prompt("astrologer_chat.system")
+            track_reading_prompt(reading_id, prompt_name, prompt_content, MODEL)
+        except Exception as e:
+            logger.warning(f"Failed to track reading prompt: {e}")
         
         # Send reading to user
         response = await send_telegram_message(chat_id, reading)

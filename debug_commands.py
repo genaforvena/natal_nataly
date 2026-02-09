@@ -277,7 +277,7 @@ async def handle_debug_pipeline(telegram_id: str, send_message_func):
 
 async def handle_show_chart(telegram_id: str, send_message_func):
     """
-    /show_chart command - Shows chart visualization (placeholder for SVG)
+    /show_chart command - Shows chart visualization (SVG)
     """
     logger.info(f"[DEBUG_CMD] /show_chart requested by {telegram_id}")
     
@@ -295,20 +295,39 @@ async def handle_show_chart(telegram_id: str, send_message_func):
                 )
                 return
             
-            # For now, send a text representation
-            # TODO: Implement SVG generation
+            # Parse chart data
             chart_data = json.loads(chart_record.natal_chart_json)
             
-            response = "🔮 **Natal Chart Visualization**\n\n"
-            response += "*(SVG generation coming soon)*\n\n"
-            response += "**Planetary Positions:**\n"
-            
-            for planet, data in chart_data.items():
-                if isinstance(data, dict) and 'sign' in data and 'degree' in data:
-                    degree = data['degree'] % 30  # Degree within sign
-                    response += f"• {planet}: {data['sign']} {degree:.2f}°\n"
-            
-            await send_message_func(response)
+            # Generate SVG
+            from chart_svg import save_chart_svg
+            try:
+                svg_path = save_chart_svg(telegram_id, chart_data)
+                
+                # For now, send a text representation
+                # TODO: Send actual SVG file via Telegram
+                response = "🔮 **Natal Chart Visualization**\n\n"
+                response += f"✅ SVG chart generated and saved to: `{svg_path}`\n\n"
+                response += "**Planetary Positions:**\n"
+                
+                for planet, data in chart_data.items():
+                    if isinstance(data, dict) and 'sign' in data and 'degree' in data:
+                        degree = data['degree'] % 30  # Degree within sign
+                        response += f"• {planet}: {data['sign']} {degree:.2f}°\n"
+                
+                await send_message_func(response)
+            except Exception as e:
+                logger.exception(f"Error generating SVG: {e}")
+                # Fallback to text representation
+                response = "🔮 **Natal Chart Visualization**\n\n"
+                response += "*(SVG generation failed, showing text format)*\n\n"
+                response += "**Planetary Positions:**\n"
+                
+                for planet, data in chart_data.items():
+                    if isinstance(data, dict) and 'sign' in data and 'degree' in data:
+                        degree = data['degree'] % 30  # Degree within sign
+                        response += f"• {planet}: {data['sign']} {degree:.2f}°\n"
+                
+                await send_message_func(response)
             
         finally:
             session.close()
