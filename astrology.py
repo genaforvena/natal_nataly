@@ -1,9 +1,14 @@
 import swisseph as swe
+import logging
 from datetime import datetime
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 EPHE_PATH = "./ephe"
 HOUSE_SYSTEM = b'P'  # Placidus house system
 swe.set_ephe_path(EPHE_PATH)
+logger.info(f"Swiss Ephemeris path set to: {EPHE_PATH}")
 
 # Zodiac signs
 ZODIAC_SIGNS = [
@@ -33,21 +38,30 @@ def get_zodiac_sign(degree: float) -> str:
 
 def datetime_to_julian(dob: str, time: str) -> float:
     """Convert date and time to Julian Day"""
-    dt = datetime.strptime(f"{dob} {time}", "%Y-%m-%d %H:%M")
-    jd = swe.julday(dt.year, dt.month, dt.day, 
-                    dt.hour + dt.minute / 60.0)
-    return jd
+    logger.debug(f"Converting datetime to Julian")
+    try:
+        dt = datetime.strptime(f"{dob} {time}", "%Y-%m-%d %H:%M")
+        jd = swe.julday(dt.year, dt.month, dt.day, 
+                        dt.hour + dt.minute / 60.0)
+        logger.debug(f"Julian Day calculated: {jd}")
+        return jd
+    except Exception as e:
+        logger.exception(f"Error converting datetime to Julian: {e}")
+        raise
 
 def generate_natal_chart(dob: str, time: str, lat: float, lng: float) -> dict:
     '''
     Returns structured natal chart JSON.
     '''
+    # Log only that we're generating, not the sensitive birth details
+    logger.info(f"Generating natal chart")
     try:
         # Convert to Julian Day
         jd = datetime_to_julian(dob, time)
         
         # Calculate planets
         chart = {}
+        logger.debug("Calculating planetary positions")
         for planet_name, planet_id in PLANETS.items():
             result = swe.calc_ut(jd, planet_id)
             degree = result[0][0]
@@ -56,15 +70,20 @@ def generate_natal_chart(dob: str, time: str, lat: float, lng: float) -> dict:
                 "degree": degree,
                 "sign": sign
             }
+            logger.debug(f"{planet_name}: {degree:.2f}° in {sign}")
         
         # Calculate Ascendant
+        logger.debug("Calculating house cusps and Ascendant")
         houses = swe.houses(jd, lat, lng, HOUSE_SYSTEM)
         asc_degree = houses[1][0]  # Ascendant
         chart["Ascendant"] = {
             "degree": asc_degree,
             "sign": get_zodiac_sign(asc_degree)
         }
+        logger.debug(f"Ascendant: {asc_degree:.2f}° in {chart['Ascendant']['sign']}")
         
+        logger.info("Natal chart generated successfully")
         return chart
     except Exception as e:
+        logger.exception(f"Failed to generate natal chart: {str(e)}")
         raise Exception(f"Failed to generate natal chart: {str(e)}")
