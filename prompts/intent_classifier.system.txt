@@ -13,12 +13,12 @@ ALLOWED INTENTS:
 8. unknown - Intent cannot be determined
 
 RULES:
-1. Return ONLY strict JSON, no prose or explanations
+1. Return ONLY valid JSON with no additional text or explanations
 2. Confidence must be between 0.0 and 1.0
 3. Consider context and language (Russian or English)
 4. Default to "unknown" if genuinely uncertain
 
-OUTPUT FORMAT (strict JSON):
+OUTPUT FORMAT:
 {
   "intent": "intent_name",
   "confidence": 0.95

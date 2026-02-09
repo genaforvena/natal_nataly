@@ -303,6 +303,44 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
         raise
 
 
+def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict) -> AstroProfile:
+    """
+    Helper function to create a new profile, set it as active, and update user state.
+    
+    Args:
+        session: Database session
+        user: User object
+        birth_data: Birth data dict
+        chart: Generated natal chart dict
+        
+    Returns:
+        Created AstroProfile
+    """
+    logger.info(f"Creating and activating profile for user {user.telegram_id}")
+    
+    # Save birth data for legacy support
+    birth_record = save_birth_data(session, user.telegram_id, birth_data)
+    
+    # Create new AstroProfile
+    profile = create_profile(
+        session, 
+        user.telegram_id, 
+        birth_data, 
+        chart,
+        profile_name=None,  # Default profile has no special name
+        profile_type="self"
+    )
+    
+    # Set as active profile
+    set_active_profile(session, user, profile.id)
+    
+    # Store natal chart in user for legacy compatibility
+    chart_json = json.dumps(chart)
+    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+    
+    return profile
+
+
 async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: str):
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
@@ -343,25 +381,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             birth_data["lng"]
         )
         
-        # Save birth data (legacy support)
-        birth_record = save_birth_data(session, user.telegram_id, birth_data)
-        
-        # Create new AstroProfile
-        profile = create_profile(
-            session, 
-            user.telegram_id, 
-            birth_data, 
-            chart,
-            profile_name=None,  # Default profile has no special name
-            profile_type="self"
-        )
-        
-        # Set as active profile
-        set_active_profile(session, user, profile.id)
-        
-        # Store natal chart in user for legacy compatibility
-        chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+        # Create profile and set as active
+        create_and_activate_profile(session, user, birth_data, chart)
         
         # Send confirmation message
         await send_telegram_message(
@@ -423,25 +444,11 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             birth_data["lng"]
         )
         
-        # Save birth data (legacy support)
-        birth_record = save_birth_data(session, user.telegram_id, birth_data)
+        # Create profile and set as active
+        create_and_activate_profile(session, user, birth_data, chart)
         
-        # Create new AstroProfile
-        profile = create_profile(
-            session, 
-            user.telegram_id, 
-            birth_data, 
-            chart,
-            profile_name=None,
-            profile_type="self"
-        )
-        
-        # Set as active profile
-        set_active_profile(session, user, profile.id)
-        
-        # Store natal chart in user for legacy compatibility
-        chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, missing_fields=None)
+        # Clear missing fields
+        update_user_state(session, user.telegram_id, STATE_HAS_CHART, missing_fields=None)
         
         # Send confirmation message
         await send_telegram_message(
@@ -662,7 +669,7 @@ async def route_message(session, user: User, chat_id: int, text: str):
                     )
                     
             elif intent == "clarify_birth_data":
-                # Clarification in non-clarification state - treat as regular question
+                # User provided clarification-style response outside clarification flow - treat as chart question
                 await handle_chatting_about_chart(session, user, chat_id, text)
                 
             else:
