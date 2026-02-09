@@ -17,7 +17,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable is not set!")
 else:
-    logger.info(f"Bot initialized with token (length: {len(TELEGRAM_TOKEN)} chars)")
+    logger.info(f"Bot initialized with Telegram token configured")
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
@@ -44,7 +44,6 @@ Lng: -74.0060"""
 async def send_telegram_message(chat_id: int, text: str):
     """Send a message to Telegram using HTTP API"""
     logger.debug(f"Sending message to chat_id={chat_id}, text_length={len(text)}")
-    logger.debug(f"Using Telegram API URL: {TELEGRAM_API_URL}/sendMessage")
     
     try:
         async with httpx.AsyncClient() as client:
@@ -52,7 +51,6 @@ async def send_telegram_message(chat_id: int, text: str):
                 "chat_id": chat_id,
                 "text": text
             }
-            logger.debug(f"Request payload: chat_id={chat_id}, text_length={len(text)}")
             
             response = await client.post(
                 f"{TELEGRAM_API_URL}/sendMessage",
