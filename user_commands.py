@@ -301,8 +301,7 @@ async def handle_edit_birth_command(telegram_id: str, send_message_func) -> bool
             
             await send_message_func(response)
             
-            # Update user state to awaiting_edit_confirmation
-            from models import STATE_AWAITING_BIRTH_DATA
+            # Update user state to awaiting_birth_data
             user.state = STATE_AWAITING_BIRTH_DATA
             session.commit()
             

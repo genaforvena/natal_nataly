@@ -414,7 +414,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             "timezone": tz_validation["timezone"],
             "timezone_source": tz_validation["source"],
             "timezone_validation_status": tz_validation["validation_status"],
-            "location_label": birth_data.get("location", "Unknown")
+            "location": birth_data.get("location", "Unknown")
         }
         
         # Calculate UTC and local times
@@ -907,7 +907,7 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
-                # Create send_msg function for command handlers
+                # Create send_msg helper function for command handlers
                 async def send_msg(msg):
                     await send_telegram_message(chat_id, msg)
                 
