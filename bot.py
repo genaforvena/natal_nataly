@@ -6,7 +6,7 @@ from datetime import datetime
 from astrology import generate_natal_chart
 from llm import interpret_chart
 from db import SessionLocal
-from models import User, BirthData
+from models import User, BirthData, Reading
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -136,8 +136,43 @@ def save_birth_data(session, telegram_id: str, birth_data: dict):
         session.add(birth_record)
         session.commit()
         logger.info(f"Birth data saved successfully for telegram_id={telegram_id}")
+        return birth_record
     except Exception as e:
         logger.exception(f"Error saving birth data for {telegram_id}: {e}")
+        raise
+
+def save_reading(session, telegram_id: str, reading_text: str, birth_data_id: int = None):
+    """Save reading to database"""
+    logger.debug(f"Saving reading for telegram_id={telegram_id}")
+    try:
+        reading_record = Reading(
+            telegram_id=telegram_id,
+            birth_data_id=birth_data_id,
+            reading_text=reading_text,
+            delivered=False
+        )
+        session.add(reading_record)
+        session.commit()
+        logger.info(f"Reading saved successfully for telegram_id={telegram_id}, reading_id={reading_record.id}")
+        return reading_record
+    except Exception as e:
+        logger.exception(f"Error saving reading for {telegram_id}: {e}")
+        raise
+
+def mark_reading_delivered(session, reading_id: int):
+    """Mark a reading as delivered"""
+    logger.debug(f"Marking reading {reading_id} as delivered")
+    try:
+        reading = session.query(Reading).filter_by(id=reading_id).first()
+        if reading:
+            reading.delivered = True
+            reading.delivered_at = datetime.utcnow()
+            session.commit()
+            logger.info(f"Reading {reading_id} marked as delivered")
+        else:
+            logger.warning(f"Reading {reading_id} not found for marking as delivered")
+    except Exception as e:
+        logger.exception(f"Error marking reading {reading_id} as delivered: {e}")
         raise
 
 async def handle_telegram_update(update: dict):
@@ -193,10 +228,12 @@ async def handle_telegram_update(update: dict):
         
         # Store user and birth data
         session = SessionLocal()
+        birth_data_id = None
         try:
             logger.debug("Opening database session")
             upsert_user(session, telegram_id)
-            save_birth_data(session, telegram_id, birth_data)
+            birth_record = save_birth_data(session, telegram_id, birth_data)
+            birth_data_id = birth_record.id
             logger.debug("Database operations completed successfully")
         except Exception as e:
             logger.exception(f"Database error for telegram_id={telegram_id}: {e}")
@@ -240,15 +277,45 @@ async def handle_telegram_update(update: dict):
             )
             return {"ok": True}
         
+        # Save reading to database before attempting to send
+        session = SessionLocal()
+        reading_id = None
+        try:
+            logger.debug("Opening database session to save reading")
+            reading_record = save_reading(session, telegram_id, reading, birth_data_id)
+            reading_id = reading_record.id
+            logger.debug(f"Reading saved with id={reading_id}")
+        except Exception as e:
+            logger.exception(f"Error saving reading for telegram_id={telegram_id}: {e}")
+            # Continue to try sending even if saving fails
+        finally:
+            session.close()
+            logger.debug("Database session closed")
+        
         # Send reading to user
         try:
             logger.info(f"Sending reading to telegram_id={telegram_id}")
-            await send_telegram_message(chat_id, reading)
+            response = await send_telegram_message(chat_id, reading)
+            
+            # Check if message was delivered successfully
+            if response is not None and reading_id is not None:
+                # Message was sent successfully, mark as delivered
+                session = SessionLocal()
+                try:
+                    mark_reading_delivered(session, reading_id)
+                except Exception as e:
+                    logger.exception(f"Error marking reading as delivered: {e}")
+                finally:
+                    session.close()
+            elif response is None:
+                # Message was not delivered (404 or other non-success)
+                logger.warning(f"Reading saved but not delivered to telegram_id={telegram_id}. User can retrieve it later.")
+            
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
         except Exception as e:
             logger.exception(f"Failed to send reading to telegram_id={telegram_id}: {e}")
-            # Cannot notify user since message sending failed
-            # This is typically due to invalid bot token, chat_id, or Telegram API issues
+            # Reading is saved in database, so it's not lost
+            logger.info(f"Reading saved in database (id={reading_id}) but delivery failed for telegram_id={telegram_id}")
         
         # Always return ok: True to Telegram to acknowledge webhook receipt
         # This prevents Telegram from retrying the webhook repeatedly

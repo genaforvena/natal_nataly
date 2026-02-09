@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Float
+from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean
 from datetime import datetime
 from db import Base
 
@@ -19,3 +19,14 @@ class BirthData(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Reading(Base):
+    __tablename__ = "readings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False)
+    birth_data_id = Column(Integer, nullable=True)  # Reference to BirthData if needed
+    reading_text = Column(Text, nullable=False)
+    delivered = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    delivered_at = Column(DateTime, nullable=True)
