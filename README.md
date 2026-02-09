@@ -1,7 +1,6 @@
 # natal_nataly
 
-Telegram astrology bot that generates natal charts locally using Swiss Ephemeris
-and produces AI-assisted readings.
+Stateful personal astrology assistant bot for Telegram with multi-profile support, natural language input, and conversational AI. Generates natal charts locally using Swiss Ephemeris and provides context-aware astrological guidance.
 
 ## Quick Start (One-Click Local Test)
 
@@ -90,15 +89,42 @@ and produces AI-assisted readings.
    # Use the ngrok URL to register webhook
    ```
 
-## Pipeline
+## Features
+
+- 🤖 **Conversational Assistant Mode** - Natural dialogue with persistent context
+- 👥 **Multi-Profile Support** - Create profiles for yourself, partners, friends
+- 🗣️ **Natural Language Input** - Describe birth data in any format or language
+- 🧠 **Intent Classification** - Smart routing based on user's intent
+- 💬 **Stateful Conversations** - Remembers your chart across sessions
+- 📊 **Swiss Ephemeris** - Accurate astronomical calculations
+
+## Architecture
 
 ```
-Telegram webhook → Validation → Natal chart → LLM interpretation → Reply
+Telegram Webhook
+    ↓
+Intent Classification (LLM)
+    ↓
+    ├─→ Birth Data Input → Chart Generation → Profile Creation
+    ├─→ Profile Management → Switch/List Profiles
+    ├─→ Chart Questions → Assistant Response (with context)
+    └─→ General Questions → Astrology Knowledge Base
 ```
 
 ## Usage
 
-Send a message to your bot in this format:
+### First Time Setup - Create Your Profile
+
+Send birth data in **natural language** (any format works):
+```
+I was born on May 15, 1990 at 2:30 PM in New York
+
+Born 1985-03-20, morning, Moscow
+
+Родился 12 декабря 1992 года в 18:45 в Санкт-Петербурге
+```
+
+**Classic format also supported:**
 ```
 DOB: 1990-05-15
 Time: 14:30
@@ -106,10 +132,42 @@ Lat: 40.7128
 Lng: -74.0060
 ```
 
-The bot will reply with a personalized astrological reading!
+The bot will ask for any missing information, then generate your natal chart.
+
+### Conversational Mode
+
+Once your chart is ready, just chat naturally:
+```
+"What are my natural talents?"
+"Why do I struggle with relationships?"
+"Tell me about my career potential"
+"What does my Sun in Taurus mean?"
+```
+
+### Multi-Profile Management
+
+**Create additional profiles:**
+```
+"Add my girlfriend Maria's profile"
+[Bot asks for birth data]
+```
+
+**Switch between profiles:**
+```
+"Switch to Maria's profile"
+```
+
+**List all profiles:**
+```
+/profiles
+```
+
+The bot remembers your active profile and provides context-aware responses.
 
 ## Documentation
 
 - See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
 - See [SETUP.md](SETUP.md) for detailed manual setup instructions
 - See [TEST_PAYLOADS.md](TEST_PAYLOADS.md) for testing examples
+- See [STATEFUL_BOT_GUIDE.md](STATEFUL_BOT_GUIDE.md) for implementation details
+- See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for architecture overview
