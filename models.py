@@ -5,6 +5,8 @@ from db import Base
 # User state constants
 STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"
 STATE_AWAITING_CLARIFICATION = "awaiting_clarification"
+STATE_AWAITING_CONFIRMATION = "awaiting_confirmation"
+STATE_AWAITING_EDIT_CONFIRMATION = "awaiting_edit_confirmation"
 STATE_HAS_CHART = "has_chart"
 STATE_CHATTING_ABOUT_CHART = "chatting_about_chart"
 
@@ -19,6 +21,8 @@ class User(Base):
     missing_fields = Column(String, nullable=True)  # Comma-separated list of missing fields
     active_profile_id = Column(Integer, ForeignKey('astro_profiles.id'), nullable=True)  # Reference to active AstroProfile
     assistant_mode = Column(Boolean, default=True)  # Enable assistant-style conversation mode
+    pending_birth_data = Column(Text, nullable=True)  # JSON: birth data pending confirmation
+    pending_normalized_data = Column(Text, nullable=True)  # JSON: normalized birth data pending confirmation
 
 class AstroProfile(Base):
     """

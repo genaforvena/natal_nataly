@@ -9,3 +9,8 @@ data/
 test_integration.py
 charts/
 *.svg
+
+# Test files
+test_*.py
+.env.test
+test_*.sqlite

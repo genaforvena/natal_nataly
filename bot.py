@@ -7,7 +7,7 @@ from astrology import generate_natal_chart, get_engine_version
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
 from models import User, BirthData, Reading, AstroProfile
-from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
+from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_AWAITING_CONFIRMATION, STATE_AWAITING_EDIT_CONFIRMATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
 from debug import (
     DEBUG_MODE, 
     log_pipeline_stage_1_raw_input,
@@ -23,6 +23,7 @@ from debug import (
     complete_debug_session
 )
 from debug_commands import handle_debug_command
+from user_commands import handle_user_command
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -412,7 +413,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             "lng": birth_data["lng"],
             "timezone": tz_validation["timezone"],
             "timezone_source": tz_validation["source"],
-            "timezone_validation_status": tz_validation["validation_status"]
+            "timezone_validation_status": tz_validation["validation_status"],
+            "location": birth_data.get("location", "Unknown")
         }
         
         # Calculate UTC and local times
@@ -433,40 +435,31 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             "user_input"
         )
         
-        # Generate natal chart
-        logger.info(f"Generating natal chart for user {user.telegram_id}")
-        chart = generate_natal_chart(
-            birth_data["dob"],
-            birth_data["time"],
-            birth_data["lat"],
-            birth_data["lng"]
-        )
+        # Store pending data in user record for confirmation
+        user.pending_birth_data = json.dumps(birth_data)
+        user.pending_normalized_data = json.dumps(normalized_birth_data)
+        user.state = STATE_AWAITING_CONFIRMATION
+        session.commit()
         
-        # Stage 4: Store natal chart with versioning
-        chart_id = store_natal_chart(
-            user.telegram_id,
-            birth_data,
-            chart,
-            get_engine_version(),
-            "SE 2.10"  # Swiss Ephemeris version
-        )
+        # Show confirmation message
+        confirmation_msg = "✨ **Please confirm your birth data:**\n\n"
+        confirmation_msg += f"**Date (local):** {birth_data['dob']}\n"
+        confirmation_msg += f"**Time (local):** {birth_data['time']}\n"
+        confirmation_msg += f"**Location:** {birth_data.get('location', 'Not specified')}\n"
+        confirmation_msg += f"**Timezone:** {tz_validation['timezone']}\n"
+        confirmation_msg += f"**Coordinates:** {birth_data['lat']}, {birth_data['lng']}\n"
         
-        log_pipeline_stage_4_chart_generated(session_id, chart_id)
+        if birth_datetime_utc:
+            confirmation_msg += f"**UTC time:** {birth_datetime_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         
-        # Create profile and set as active
-        create_and_activate_profile(session, user, birth_data, chart)
+        confirmation_msg += f"\n**Timezone Source:** {tz_validation['source']}\n"
         
-        # Complete debug session
-        if DEBUG_MODE:
-            complete_debug_session(session_id, natal_chart_id=chart_id)
+        confirmation_msg += "\n⚠️ Please verify this data carefully. Incorrect data will result in inaccurate readings.\n\n"
+        confirmation_msg += "Reply **CONFIRM** to proceed or **EDIT** to change the data."
         
-        # Send confirmation message
-        await send_telegram_message(
-            chat_id,
-            "✨ Натальная карта готова.\nТеперь ты можешь задавать любые вопросы о себе."
-        )
+        await send_telegram_message(chat_id, confirmation_msg)
         
-        logger.info(f"Birth data processed successfully for user {user.telegram_id}")
+        logger.info(f"Birth data pending confirmation for user {user.telegram_id}")
         
     except Exception as e:
         logger.exception(f"Error handling awaiting_birth_data: {e}")
@@ -474,6 +467,97 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         await send_telegram_message(
             chat_id,
             "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
+        )
+
+
+async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: str):
+    """Handle confirmation of birth data"""
+    logger.info(f"Handling awaiting_confirmation for user {user.telegram_id}")
+    
+    text_upper = text.strip().upper()
+    
+    if text_upper == "CONFIRM":
+        try:
+            # Retrieve pending data
+            if not user.pending_birth_data or not user.pending_normalized_data:
+                await send_telegram_message(chat_id, "Нет данных для подтверждения. Пожалуйста, отправь данные рождения заново.")
+                user.state = STATE_AWAITING_BIRTH_DATA
+                session.commit()
+                return
+            
+            birth_data = json.loads(user.pending_birth_data)
+            normalized_birth_data = json.loads(user.pending_normalized_data)
+            
+            # Generate natal chart
+            logger.info(f"Generating natal chart for user {user.telegram_id}")
+            chart = generate_natal_chart(
+                birth_data["dob"],
+                birth_data["time"],
+                birth_data["lat"],
+                birth_data["lng"]
+            )
+            
+            # Store natal chart with versioning
+            chart_id = store_natal_chart(
+                user.telegram_id,
+                birth_data,
+                chart,
+                get_engine_version(),
+                "SE 2.10"  # Swiss Ephemeris version
+            )
+            
+            # Create profile and set as active
+            create_and_activate_profile(session, user, birth_data, chart)
+            
+            # Clear pending data
+            user.pending_birth_data = None
+            user.pending_normalized_data = None
+            session.commit()
+            
+            # Send success message
+            await send_telegram_message(
+                chat_id,
+                "✅ Натальная карта создана!\n\n"
+                "Теперь ты можешь:\n"
+                "• Задавать вопросы о своей карте\n"
+                "• Использовать /my_data чтобы увидеть свои данные\n"
+                "• Использовать /my_chart_raw для получения сырых данных карты\n"
+                "• Использовать /my_readings для просмотра своих readings"
+            )
+            
+            logger.info(f"Chart confirmed and created for user {user.telegram_id}")
+            
+        except Exception as e:
+            logger.exception(f"Error confirming birth data: {e}")
+            await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при создании карты. Пожалуйста, попробуйте ещё раз."
+            )
+            user.state = STATE_AWAITING_BIRTH_DATA
+            session.commit()
+    
+    elif text_upper == "EDIT":
+        # Clear pending data and go back to input
+        user.pending_birth_data = None
+        user.pending_normalized_data = None
+        user.state = STATE_AWAITING_BIRTH_DATA
+        session.commit()
+        
+        await send_telegram_message(
+            chat_id,
+            "✏️ Хорошо, давай попробуем ещё раз.\n\n"
+            "Отправь данные рождения в формате:\n"
+            "DOB: YYYY-MM-DD\n"
+            "Time: HH:MM\n"
+            "Lat: XX.XXXX\n"
+            "Lng: XX.XXXX"
+        )
+    
+    else:
+        # Invalid response
+        await send_telegram_message(
+            chat_id,
+            "⚠️ Пожалуйста, ответь **CONFIRM** для подтверждения или **EDIT** для изменения данных."
         )
 
 
@@ -707,6 +791,9 @@ async def route_message(session, user: User, chat_id: int, text: str):
     elif user.state == STATE_AWAITING_CLARIFICATION:
         await handle_awaiting_clarification(session, user, chat_id, text)
         return
+    elif user.state == STATE_AWAITING_CONFIRMATION:
+        await handle_awaiting_confirmation(session, user, chat_id, text)
+        return
     
     # For users with charts, use intent-based routing for conversational flow
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
@@ -820,12 +907,18 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
-                # Check for debug commands
+                # Create send_msg helper function for command handlers
                 async def send_msg(msg):
                     await send_telegram_message(chat_id, msg)
                 
+                # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
+                    return {"ok": True}
+                
+                # Check for user transparency commands
+                if await handle_user_command(telegram_id, text, send_msg):
+                    logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
                     return {"ok": True}
                 
                 # Handle other commands
