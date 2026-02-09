@@ -7,6 +7,7 @@ from astrology import generate_natal_chart
 from llm import extract_birth_data, generate_clarification_question, interpret_chart
 from db import SessionLocal
 from models import User, BirthData, Reading
+from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ def get_or_create_user(session, telegram_id: str) -> User:
             user.last_seen = datetime.now(timezone.utc)
         else:
             logger.info(f"Creating new user: {telegram_id}")
-            user = User(telegram_id=telegram_id, state="awaiting_birth_data")
+            user = User(telegram_id=telegram_id, state=STATE_AWAITING_BIRTH_DATA)
             session.add(user)
         session.commit()
         logger.debug(f"User retrieved/created successfully: {telegram_id}, state={user.state}")
@@ -167,7 +168,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         if missing:
             logger.info(f"Missing fields detected: {missing}")
             # Update state to awaiting_clarification
-            update_user_state(session, user.telegram_id, "awaiting_clarification", missing_fields=",".join(missing))
+            update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(missing))
             
             # Generate clarification question
             question = generate_clarification_question(missing, text)
@@ -198,7 +199,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         
         # Store natal chart and update state
         chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, "has_chart", natal_chart_json=chart_json)
+        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
         
         # Send confirmation message
         await send_telegram_message(
@@ -234,7 +235,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
         if still_missing:
             logger.info(f"Still missing fields: {still_missing}")
             # Update missing fields
-            update_user_state(session, user.telegram_id, "awaiting_clarification", missing_fields=",".join(still_missing))
+            update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
             # Ask again
             question = generate_clarification_question(still_missing, text)
@@ -265,7 +266,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
         
         # Store natal chart and update state
         chart_json = json.dumps(chart)
-        update_user_state(session, user.telegram_id, "has_chart", natal_chart_json=chart_json, missing_fields="")
+        update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, missing_fields=None)
         
         # Send confirmation message
         await send_telegram_message(
@@ -295,14 +296,14 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
                 chat_id,
                 "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова."
             )
-            update_user_state(session, user.telegram_id, "awaiting_birth_data")
+            update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
             return
         
         chart = json.loads(user.natal_chart_json)
         
         # Update state to chatting_about_chart if it was has_chart
-        if user.state == "has_chart":
-            update_user_state(session, user.telegram_id, "chatting_about_chart")
+        if user.state == STATE_HAS_CHART:
+            update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
         
         # Get LLM interpretation based on user's question
         logger.info(f"Getting chart interpretation for user question")
@@ -333,16 +334,16 @@ async def route_message(session, user: User, chat_id: int, text: str):
     """Route message based on user state"""
     logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
     
-    if user.state == "awaiting_birth_data":
+    if user.state == STATE_AWAITING_BIRTH_DATA:
         await handle_awaiting_birth_data(session, user, chat_id, text)
-    elif user.state == "awaiting_clarification":
+    elif user.state == STATE_AWAITING_CLARIFICATION:
         await handle_awaiting_clarification(session, user, chat_id, text)
-    elif user.state in ["has_chart", "chatting_about_chart"]:
+    elif user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         await handle_chatting_about_chart(session, user, chat_id, text)
     else:
         logger.error(f"Unknown user state: {user.state}")
         await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
-        update_user_state(session, user.telegram_id, "awaiting_birth_data")
+        update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
 
 
 async def handle_telegram_update(update: dict):

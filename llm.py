@@ -145,7 +145,9 @@ def interpret_chart(chart_json: dict, question: str = None) -> str:
             )
         else:
             # Initial reading mode - full chart interpretation
-            user_prompt = f"НАТАЛЬНАЯ КАРТА:\n{chart_str}\n\nПредоставь полную интерпретацию этой натальной карты."
+            user_prompt = get_prompt("astrologer_initial_reading.user").format(
+                chart_json=chart_str
+            )
         
         logger.info(f"Making LLM API call with model: {MODEL}")
         logger.debug(f"Chart data size: {len(chart_str)} characters")
