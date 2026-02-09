@@ -164,6 +164,60 @@ Once your chart is ready, just chat naturally:
 
 The bot remembers your active profile and provides context-aware responses.
 
+### User Data Transparency & Audit Commands
+
+natal_nataly provides full transparency into your data and calculations:
+
+**View your birth data:**
+```
+/my_data
+```
+Shows your complete birth data including:
+- Date and time (local and UTC)
+- Location coordinates
+- Timezone information and source
+- Natal chart status and engine version
+
+**Access raw chart data:**
+```
+/my_chart_raw
+```
+Returns your natal chart in JSON format for verification on external services like AstroSeek.
+
+**Review all your readings:**
+```
+/my_readings
+```
+Lists all your astrological readings with metadata (date, model used, prompt).
+
+**Retrieve specific reading:**
+```
+/my_readings 5
+```
+Displays a specific reading by ID without regenerating it.
+
+**Edit your birth data:**
+```
+/edit_birth
+```
+Allows you to update your birth data. Shows diff and requires confirmation.
+
+**Data Confirmation Flow:**
+When you first provide birth data, the bot will ask you to confirm before generating the chart:
+- Shows all extracted data (date, time, location, timezone, coordinates)
+- Reply **CONFIRM** to proceed
+- Reply **EDIT** to modify the data
+
+This prevents errors from incorrect timezone detection or coordinate rounding.
+
+## Privacy & Security
+
+- ✅ All users see only their own data
+- ✅ Readings are stored in database for reuse (no redundant LLM calls)
+- ✅ Birth data confirmation prevents incorrect chart generation
+- ✅ Full audit trail of data sources (timezone, coordinates)
+- ✅ Swiss Ephemeris version tracking for reproducibility
+
 ## Documentation
 
 - See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
