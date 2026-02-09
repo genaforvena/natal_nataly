@@ -7,3 +7,5 @@ venv/
 .DS_Store
 data/
 test_integration.py
+charts/
+*.svg
