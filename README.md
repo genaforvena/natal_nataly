@@ -171,3 +171,33 @@ The bot remembers your active profile and provides context-aware responses.
 - See [TEST_PAYLOADS.md](TEST_PAYLOADS.md) for testing examples
 - See [STATEFUL_BOT_GUIDE.md](STATEFUL_BOT_GUIDE.md) for implementation details
 - See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for architecture overview
+- See [DEBUG_MODE.md](DEBUG_MODE.md) for debug mode and developer commands
+
+## Debug Mode (Developer Tools)
+
+natal_nataly includes a comprehensive debug mode for transparent inspection of all processing stages:
+
+### Enable Debug Mode
+
+Add to your `.env` file:
+```bash
+DEBUG_MODE=true
+DEVELOPER_TELEGRAM_ID=your_telegram_id
+```
+
+### Developer Commands
+
+- `/debug_birth` - Show parsed and normalized birth data
+- `/debug_chart` - Show complete natal chart JSON with metadata
+- `/debug_pipeline` - Show complete pipeline trace for latest session
+- `/show_chart` - Generate and display SVG chart visualization
+
+### Features
+
+- **Pipeline Logging**: Tracks 5 stages from raw input to final reading
+- **Natal Chart Storage**: Charts stored with versioning (Swiss Ephemeris version)
+- **Timezone Validation**: Compares LLM-extracted timezone with geo lookup
+- **LLM Prompt Tracking**: Stores prompt name, hash, and model for reproducibility
+- **SVG Visualization**: Generates visual natal chart for verification
+
+See [DEBUG_MODE.md](DEBUG_MODE.md) for complete documentation.
