@@ -5,6 +5,48 @@ and produces AI-assisted readings.
 
 ## Quick Start (One-Click Local Test)
 
+### Option 1: Docker (Recommended - Works on Windows, macOS, Linux)
+
+**Prerequisites:**
+- Docker and Docker Compose installed ([Get Docker](https://docs.docker.com/get-docker/))
+
+1. **Clone and enter the repository:**
+   ```bash
+   git clone https://github.com/genaforvena/natal_nataly.git
+   cd natal_nataly
+   ```
+
+2. **Create environment file `.env`:**
+   ```bash
+   TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=your_groq_api_key
+   ```
+   
+   Get API keys from:
+   - Telegram: https://t.me/botfather
+   - Groq: https://console.groq.com
+   - DeepSeek: https://platform.deepseek.com
+
+3. **Start the bot with Docker Compose:**
+   ```bash
+   docker-compose up -d
+   ```
+   
+   The server will start at http://localhost:8000
+
+4. **View logs:**
+   ```bash
+   docker-compose logs -f
+   ```
+
+5. **Stop the bot:**
+   ```bash
+   docker-compose down
+   ```
+
+### Option 2: Manual Setup (Linux/macOS)
+
 1. **Clone and enter the repository:**
    ```bash
    git clone https://github.com/genaforvena/natal_nataly.git
@@ -68,5 +110,6 @@ The bot will reply with a personalized astrological reading!
 
 ## Documentation
 
-- See [SETUP.md](SETUP.md) for detailed setup instructions
+- See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
+- See [SETUP.md](SETUP.md) for detailed manual setup instructions
 - See [TEST_PAYLOADS.md](TEST_PAYLOADS.md) for testing examples
