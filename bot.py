@@ -1235,10 +1235,6 @@ async def route_message(session, user: User, chat_id: int, text: str):
                 update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
                 await handle_awaiting_birth_data(session, user, chat_id, text)
                 
-            elif intent_type == "transit_question":
-                # User asking about transits
-                await handle_transit_question(session, user, chat_id, text)
-                
             elif intent_type == "natal_question":
                 # User asking about their natal chart
                 await handle_chatting_about_chart(session, user, chat_id, text)

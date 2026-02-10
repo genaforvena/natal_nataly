@@ -4,8 +4,9 @@ LLM-based detection using classify_intent() from llm.py.
 
 Maps detailed LLM intents to simplified routing categories:
 - provide_birth_data (LLM) → birth_input (routing)
-- ask_transit_question (LLM) → transit_question (routing)
 - all other intents → natal_question (routing)
+
+Note: Transit functionality has been temporarily disabled.
 """
 
 import logging
@@ -13,7 +14,7 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-IntentType = Literal["birth_input", "natal_question", "transit_question"]
+IntentType = Literal["birth_input", "natal_question"]
 
 
 def detect_request_type(user_text: str) -> IntentType:
@@ -22,7 +23,6 @@ def detect_request_type(user_text: str) -> IntentType:
     
     Calls classify_intent() which returns detailed LLM intents like:
     - provide_birth_data
-    - ask_transit_question
     - ask_about_chart
     - ask_general_question
     - meta_conversation
@@ -30,14 +30,15 @@ def detect_request_type(user_text: str) -> IntentType:
     
     These are mapped to simplified routing categories:
     - provide_birth_data → birth_input
-    - ask_transit_question → transit_question
     - all others → natal_question
+    
+    Note: Transit functionality has been temporarily disabled.
     
     Args:
         user_text: User's message text
         
     Returns:
-        One of: "birth_input", "natal_question", "transit_question"
+        One of: "birth_input", "natal_question"
     """
     from llm import classify_intent
     
@@ -55,13 +56,11 @@ def detect_request_type(user_text: str) -> IntentType:
         if llm_intent == "provide_birth_data":
             logger.info("Intent detected: birth_input")
             return "birth_input"
-        elif llm_intent == "ask_transit_question":
-            logger.info("Intent detected: transit_question")
-            return "transit_question"
         else:
             # All other intents default to natal_question
             # This includes: ask_about_chart, ask_general_question, meta_conversation,
             # clarify_birth_data, new_profile_request, switch_profile, unknown
+            # Note: ask_transit_question is also mapped to natal_question (transit functionality disabled)
             logger.info(f"Intent detected: natal_question (mapped from {llm_intent})")
             return "natal_question"
             

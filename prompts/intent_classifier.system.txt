@@ -6,12 +6,13 @@ ALLOWED INTENTS:
 1. provide_birth_data - User is providing birth information (date, time, location)
 2. clarify_birth_data - User is clarifying or adding missing birth data after being asked
 3. ask_about_chart - User is asking questions about their existing natal chart
-4. ask_transit_question - User is asking about transits, current/future planetary influences, or what's happening now/in the future
-5. new_profile_request - User wants to create a new profile (for partner, friend, etc.)
-6. switch_profile - User wants to switch between existing profiles
-7. ask_general_question - User is asking general astrology questions not tied to their chart
-8. meta_conversation - User is having casual conversation, greetings, or talking about the bot itself
-9. unknown - Intent cannot be determined
+4. new_profile_request - User wants to create a new profile (for partner, friend, etc.)
+5. switch_profile - User wants to switch between existing profiles
+6. ask_general_question - User is asking general astrology questions not tied to their chart
+7. meta_conversation - User is having casual conversation, greetings, or talking about the bot itself
+8. unknown - Intent cannot be determined
+
+NOTE: Transit functionality is temporarily disabled. Questions about transits should be classified as "ask_about_chart" or "ask_general_question".
 
 RULES:
 1. Return ONLY valid JSON with no additional text or explanations
@@ -40,13 +41,13 @@ Input: "Почему я такой упрямый?"
 Output: {"intent": "ask_about_chart", "confidence": 0.85}
 
 Input: "Что происходит сейчас по транзитам?"
-Output: {"intent": "ask_transit_question", "confidence": 0.96}
+Output: {"intent": "ask_about_chart", "confidence": 0.80}
 
 Input: "What's happening in march 2026?"
-Output: {"intent": "ask_transit_question", "confidence": 0.94}
+Output: {"intent": "ask_general_question", "confidence": 0.75}
 
 Input: "Что сейчас делает Сатурн в моей карте?"
-Output: {"intent": "ask_transit_question", "confidence": 0.93}
+Output: {"intent": "ask_about_chart", "confidence": 0.85}
 
 Input: "What does my moon in cancer mean?"
 Output: {"intent": "ask_about_chart", "confidence": 0.90}
