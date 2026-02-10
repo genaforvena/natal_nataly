@@ -15,6 +15,6 @@ flake8-bugbear==23.12.2
 mypy==1.7.1
 types-PyYAML==6.0.12.12
 
-# Mocking HTTP requests
-httpx-mock==0.14.0
+# Mocking HTTP requests (compatible with httpx from main requirements)
+pytest-httpx==0.30.0
 responses==0.24.1

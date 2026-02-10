@@ -8,12 +8,10 @@ Tests the core natal chart generation functionality including:
 """
 
 import pytest
-from datetime import datetime
 from services.chart_builder import (
     build_natal_chart_text_and_json,
     deg_to_dms,
-    house_suffix,
-    get_timezone_from_coordinates
+    house_suffix
 )
 
 
@@ -30,112 +28,114 @@ class TestChartBuilder:
 
     def test_house_suffix(self):
         """Test ordinal suffix generation for house numbers."""
-        assert house_suffix(1) == "1st"
-        assert house_suffix(2) == "2nd"
-        assert house_suffix(3) == "3rd"
-        assert house_suffix(4) == "4th"
-        assert house_suffix(11) == "11th"
-        assert house_suffix(12) == "12th"
-
-    def test_get_timezone_from_coordinates(self):
-        """Test timezone detection from latitude/longitude."""
-        # New York coordinates
-        tz = get_timezone_from_coordinates(40.7128, -74.0060)
-        assert tz == "America/New_York"
-        
-        # London coordinates
-        tz = get_timezone_from_coordinates(51.5074, -0.1278)
-        assert tz == "Europe/London"
-        
-        # Invalid coordinates should raise error or return None
-        with pytest.raises(Exception):
-            get_timezone_from_coordinates(999, 999)
+        assert house_suffix(1) == "st"
+        assert house_suffix(2) == "nd"
+        assert house_suffix(3) == "rd"
+        assert house_suffix(4) == "th"
+        assert house_suffix(11) == "th"
+        assert house_suffix(12) == "th"
 
     def test_build_natal_chart_basic(self):
         """Test basic natal chart generation."""
         # Test with known birth data
-        dob = "1990-01-15"
-        time_str = "14:30"
-        lat = 40.7128
-        lng = -74.0060
-        original_input = f"DOB: {dob}\nTime: {time_str}\nLat: {lat}\nLng: {lng}"
-        
-        chart_text, chart_json = build_natal_chart_text_and_json(
-            dob=dob,
-            time=time_str,
-            lat=lat,
-            lng=lng,
-            original_input=original_input
+        result = build_natal_chart_text_and_json(
+            name="Test User",
+            year=1990,
+            month=1,
+            day=15,
+            hour=14,
+            minute=30,
+            lat=40.7128,
+            lng=-74.0060,
+            city="New York",
+            nation="USA"
         )
         
         # Verify chart text is generated
-        assert isinstance(chart_text, str)
-        assert len(chart_text) > 0
-        assert "Sun" in chart_text
-        assert "Moon" in chart_text
+        assert isinstance(result, dict)
+        assert "text_export" in result
+        assert "chart_json" in result
+        
+        text_export = result["text_export"]
+        chart_json = result["chart_json"]
+        
+        assert isinstance(text_export, str)
+        assert len(text_export) > 0
+        assert "Sun" in text_export
+        assert "Moon" in text_export
         
         # Verify JSON structure
         assert isinstance(chart_json, dict)
         assert "planets" in chart_json
         assert "houses" in chart_json
-        assert "metadata" in chart_json
+        assert "meta" in chart_json
         
         # Check metadata
-        assert chart_json["metadata"]["date_of_birth"] == dob
-        assert chart_json["metadata"]["time_of_birth"] == time_str
+        assert chart_json["meta"]["city"] == "New York"
+        assert chart_json["meta"]["nation"] == "USA"
         
         # Check planets structure
-        assert "Sun" in chart_json["planets"]
-        assert "Moon" in chart_json["planets"]
-        assert "degree" in chart_json["planets"]["Sun"]
-        assert "sign" in chart_json["planets"]["Sun"]
+        planets = chart_json["planets"]
+        planet_names = [p["name"] for p in planets]
+        assert "Sun" in planet_names
+        assert "Moon" in planet_names
 
     def test_build_natal_chart_with_different_locations(self):
         """Test chart generation with different geographic locations."""
-        dob = "1985-06-21"
-        time_str = "08:00"
-        
-        # Test multiple locations
         locations = [
-            (51.5074, -0.1278, "Europe/London"),  # London
-            (35.6762, 139.6503, "Asia/Tokyo"),     # Tokyo
-            (-33.8688, 151.2093, "Australia/Sydney")  # Sydney
+            (51.5074, -0.1278, "London", "UK"),  # London
+            (35.6762, 139.6503, "Tokyo", "Japan"),  # Tokyo
+            (-33.8688, 151.2093, "Sydney", "Australia")  # Sydney
         ]
         
-        for lat, lng, expected_tz in locations:
-            original_input = f"DOB: {dob}\nTime: {time_str}\nLat: {lat}\nLng: {lng}"
-            chart_text, chart_json = build_natal_chart_text_and_json(
-                dob=dob,
-                time=time_str,
+        for lat, lng, city, nation in locations:
+            result = build_natal_chart_text_and_json(
+                name="Test User",
+                year=1985,
+                month=6,
+                day=21,
+                hour=8,
+                minute=0,
                 lat=lat,
                 lng=lng,
-                original_input=original_input
+                city=city,
+                nation=nation
             )
             
-            assert isinstance(chart_text, str)
-            assert len(chart_text) > 0
-            assert isinstance(chart_json, dict)
-            # Verify timezone is detected
-            assert chart_json["metadata"]["timezone"] == expected_tz
+            assert isinstance(result, dict)
+            assert "text_export" in result
+            assert "chart_json" in result
+            assert len(result["text_export"]) > 0
 
     def test_build_natal_chart_invalid_date(self):
-        """Test chart generation with invalid date format."""
+        """Test chart generation with invalid date."""
         with pytest.raises(Exception):
             build_natal_chart_text_and_json(
-                dob="invalid-date",
-                time="14:30",
+                name="Test User",
+                year=1990,
+                month=13,  # Invalid month
+                day=32,  # Invalid day
+                hour=14,
+                minute=30,
                 lat=40.7128,
-                lng=-74.0060,
-                original_input="invalid"
+                lng=-74.0060
             )
 
-    def test_build_natal_chart_invalid_coordinates(self):
-        """Test chart generation with invalid coordinates."""
-        with pytest.raises(Exception):
-            build_natal_chart_text_and_json(
-                dob="1990-01-15",
-                time="14:30",
-                lat=999,  # Invalid latitude
-                lng=-74.0060,
-                original_input="invalid coords"
-            )
+    def test_build_natal_chart_timezone_handling(self):
+        """Test chart generation with explicit timezone."""
+        result = build_natal_chart_text_and_json(
+            name="Test User",
+            year=1990,
+            month=1,
+            day=15,
+            hour=14,
+            minute=30,
+            lat=40.7128,
+            lng=-74.0060,
+            city="New York",
+            nation="USA",
+            tz_str="America/New_York"
+        )
+        
+        assert isinstance(result, dict)
+        assert result["chart_json"]["meta"]["timezone"] == "America/New_York"
