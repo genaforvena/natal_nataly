@@ -286,7 +286,7 @@ async def handle_my_readings_command(telegram_id: str, send_message_func, readin
             if len(readings) > 20:
                 response += f"\n... and {len(readings) - 20} more readings\n"
             
-            response += "\nℹ️ To retrieve a specific reading, use: /my_readings <id>\n"
+            response += "\nℹ️ To retrieve a specific reading, use: /my_readings &lt;id&gt;\n"
             response += "Example: /my_readings 5"
             
             await send_message_func(response)
@@ -421,7 +421,7 @@ async def handle_help_command(telegram_id: str, send_message_func) -> bool:
         response += "• `/my_data` - View your birth data and chart info\n"
         response += "• `/my_chart_raw` - Get raw chart JSON data\n"
         response += "• `/my_readings` - List all your readings\n"
-        response += "• `/my_readings <id>` - Get specific reading\n\n"
+        response += "• `/my_readings &lt;id&gt;` - Get specific reading\n\n"
         
         response += "**Profiles:**\n"
         response += "• `/profiles` - View and manage astro profiles\n\n"
