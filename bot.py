@@ -1047,6 +1047,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         
         # Get conversation history for context
         conversation_history = get_conversation_thread(session, user.telegram_id)
+        logger.info(f"Retrieved conversation history: {len(conversation_history)} messages")
         
         # Build context for assistant
         profile = get_active_profile(session, user)
@@ -1055,11 +1056,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Get assistant response using new assistant mode
         prompt_name = "assistant_response"
         if user.assistant_mode:
-            logger.info(f"Using assistant mode for response with conversation history ({len(conversation_history)} messages)")
+            logger.info(f"Using assistant mode for response")
             reading = generate_assistant_response(context, text, conversation_history=conversation_history)
         else:
             # Fallback to legacy interpret_chart
-            logger.info(f"Using legacy chart interpretation with conversation history ({len(conversation_history)} messages)")
+            logger.info(f"Using legacy chart interpretation")
             reading = interpret_chart(chart, question=text, conversation_history=conversation_history)
             prompt_name = "astrologer_chat"
         

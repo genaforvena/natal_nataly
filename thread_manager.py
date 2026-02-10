@@ -10,7 +10,7 @@ Manages conversation threads for users with the following rules:
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from models import ConversationMessage
 
@@ -191,7 +191,7 @@ def reset_thread(session: Session, telegram_id: str):
         raise
 
 
-def get_thread_summary(session: Session, telegram_id: str) -> Dict[str, any]:
+def get_thread_summary(session: Session, telegram_id: str) -> Dict[str, Any]:
     """
     Get summary statistics about the user's thread.
     Useful for debugging and analytics.
