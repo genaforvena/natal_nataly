@@ -89,6 +89,82 @@ Stateful personal astrology assistant bot for Telegram with multi-profile suppor
    # Use the ngrok URL to register webhook
    ```
 
+## Deploy to Render (Free Hosting)
+
+natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL support for production use.
+
+### Deployment Steps
+
+1. **Push your repository to GitHub**
+   ```bash
+   git add .
+   git commit -m "Prepare for Render deployment"
+   git push origin main
+   ```
+
+2. **Create a new Web Service on Render**
+   - Go to [Render Dashboard](https://dashboard.render.com/)
+   - Click **New +** → **Web Service**
+   - Connect your GitHub repository
+   - Select `natal_nataly` repository
+
+3. **Configure the service:**
+   - **Name**: `natal-nataly-bot` (or your preferred name)
+   - **Environment**: `Docker`
+   - **Plan**: `Free`
+   - **Branch**: `main`
+
+4. **Add a PostgreSQL database:**
+   - In Render Dashboard, click **New +** → **PostgreSQL**
+   - **Name**: `natal-nataly-db`
+   - **Plan**: `Free`
+   - Click **Create Database**
+
+5. **Configure Environment Variables:**
+   
+   In your Web Service settings, add these environment variables:
+   
+   ```bash
+   TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=<your_groq_api_key>
+   DATABASE_URL=<copy_from_postgres_internal_database_url>
+   RENDER=true
+   WEBHOOK_URL=https://your-app-name.onrender.com/webhook
+   PORT=10000
+   ```
+   
+   **Important:** 
+   - Copy `DATABASE_URL` from your PostgreSQL database's **Internal Database URL**
+   - Replace `your-app-name` in `WEBHOOK_URL` with your actual Render service name
+
+6. **Deploy:**
+   - Click **Create Web Service**
+   - Render will automatically build and deploy your app
+   - Wait for the deployment to complete (first build takes ~5 minutes)
+
+7. **Register Telegram Webhook:**
+   
+   Once deployed, register your webhook with Telegram:
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://your-app-name.onrender.com/webhook"}'
+   ```
+
+8. **Verify deployment:**
+   - Check your service logs in Render Dashboard
+   - Look for: `Database backend: postgresql` and `Running mode: render`
+   - Send a test message to your Telegram bot
+
+### Database Configuration
+
+The bot automatically detects the database backend:
+- **Local development**: Uses SQLite (`natal_nataly.sqlite`)
+- **Production (Render)**: Uses PostgreSQL when `DATABASE_URL` is set
+
+No manual migration needed - tables are created automatically on first startup.
+
 ## Features
 
 - 🤖 **Conversational Assistant Mode** - Natural dialogue with persistent context
