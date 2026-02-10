@@ -39,7 +39,6 @@ TRANSIT_KEYWORDS = [
     "ноябр", "november", "nov",
     "декабр", "december", "dec",
     # Time-related keywords
-    "2024", "2025", "2026", "2027", "2028",  # Year references
     "этот", "this",  # этот месяц, this month
     "следующ", "next",  # следующий месяц, next month
     "завтра", "tomorrow",
@@ -136,6 +135,12 @@ def detect_request_type(user_text: str) -> IntentType:
     date_pattern = r'\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{4}\b'
     if re.search(date_pattern, text_lower):
         logger.info("Intent detected: transit_question (date pattern found)")
+        return "transit_question"
+    
+    # Check for year patterns (e.g., "2026", "2027") which often indicate transit questions
+    year_pattern = r'\b20[2-9]\d\b'
+    if re.search(year_pattern, text):
+        logger.info("Intent detected: transit_question (year pattern found)")
         return "transit_question"
     
     # Default to natal question

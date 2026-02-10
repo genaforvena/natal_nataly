@@ -27,6 +27,17 @@ MAJOR_ASPECTS = {
     "Sextile": 60
 }
 
+# Orb allowances for aspects (in degrees)
+# Traditional astrology uses wider orbs for major aspects like Conjunction/Opposition
+# and tighter orbs for minor aspects. These values are standard in modern astrology.
+ASPECT_ORBS = {
+    "Conjunction": 8,
+    "Opposition": 8,
+    "Trine": 6,
+    "Square": 6,
+    "Sextile": 6
+}
+
 # Sign names for conversion
 SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
@@ -145,7 +156,7 @@ def build_transits(
                 
                 # Check for major aspects
                 for aspect_name, aspect_angle in MAJOR_ASPECTS.items():
-                    orb = 8 if aspect_name in ["Conjunction", "Opposition"] else 6
+                    orb = ASPECT_ORBS.get(aspect_name, 6)
                     
                     if abs(angle_diff - aspect_angle) <= orb:
                         transit_aspects.append({
