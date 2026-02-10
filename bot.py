@@ -112,7 +112,9 @@ async def send_telegram_message(chat_id: int, text: str):
     
     try:
         last_response = None
-        async with httpx.AsyncClient() as client:
+        # Configure timeout: 30s for connection, 60s for read/write operations
+        timeout = httpx.Timeout(30.0, read=60.0, write=60.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             for i, chunk in enumerate(message_chunks, 1):
                 # Add small delay between chunks to avoid rate limiting (except for first chunk)
                 if i > 1:
