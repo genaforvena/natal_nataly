@@ -22,7 +22,6 @@ TRANSIT_KEYWORDS = [
     "будущее", "future",
     "что происходит", "what's happening", "what is happening",
     "как выглядит", "how does",
-    "что делает", "what does",
     "текущ", "current",  # текущий, текущая, текущие
     "настоящ",  # настоящий, настоящее время
     "прогноз", "forecast", "prediction",
@@ -48,6 +47,13 @@ TRANSIT_KEYWORDS = [
     "неделя", "week",
     "месяц", "month",
     "год", "year",
+]
+
+# Phrases that specifically indicate transit questions (more specific)
+TRANSIT_PHRASES = [
+    "что делает",  # что делает сатурн
+    "what does",  # what does saturn do
+    "how does",  # how does march look
 ]
 
 # Keywords indicating birth data input
@@ -94,7 +100,33 @@ def detect_request_type(user_text: str) -> IntentType:
         logger.info("Intent detected: birth_input (structured format)")
         return "birth_input"
     
-    # Check for transit keywords
+    # Check for specific transit phrases first (more specific matching)
+    for phrase in TRANSIT_PHRASES:
+        if phrase.lower() in text_lower:
+            # Additional check: make sure it's about a planet or time period
+            # Look for planet names or time references nearby
+            planets = ["saturn", "jupiter", "mars", "venus", "mercury", "moon", "sun", 
+                      "uranus", "neptune", "pluto",
+                      "сатурн", "юпитер", "марс", "венер", "меркурий", "луна", "солнц",
+                      "уран", "нептун", "плутон"]
+            time_refs = ["сейчас", "now", "март", "march", "месяц", "month", "future", "будущ"]
+            
+            # For "what does" or "что делает", require time reference, not just planet name
+            # This prevents "what does my moon mean" from being a transit question
+            if phrase in ["what does", "что делает"]:
+                # Must have explicit time reference
+                has_time_ref = any(ref in text_lower for ref in time_refs)
+                if has_time_ref:
+                    logger.info(f"Intent detected: transit_question (phrase: {phrase} with time ref)")
+                    return "transit_question"
+            else:
+                # For other phrases like "how does", check for planet or time
+                has_planet_or_time = any(ref in text_lower for ref in planets + time_refs)
+                if has_planet_or_time:
+                    logger.info(f"Intent detected: transit_question (phrase: {phrase})")
+                    return "transit_question"
+    
+    # Check for general transit keywords
     for keyword in TRANSIT_KEYWORDS:
         if keyword.lower() in text_lower:
             logger.info(f"Intent detected: transit_question (keyword: {keyword})")

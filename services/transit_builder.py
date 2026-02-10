@@ -6,8 +6,7 @@ Calculates current or future transits relative to natal chart.
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any
-from kerykeion import AstrologicalSubject, NatalAspects
-from kerykeion.kr_types import KerykeionException
+from kerykeion import AstrologicalSubject
 from timezonefinder import TimezoneFinder
 
 logger = logging.getLogger(__name__)
@@ -15,11 +14,9 @@ logger = logging.getLogger(__name__)
 # Initialize TimezoneFinder once at module level
 _timezone_finder = TimezoneFinder()
 
-# Planet names
-PLANETS = [
-    "Sun", "Moon", "Mercury", "Venus", "Mars",
-    "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
-]
+# Planet names (lowercase for Kerykeion attribute access)
+PLANET_ATTRS = ['sun', 'moon', 'mercury', 'venus', 'mars', 
+                'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
 
 # Aspect types we care about
 MAJOR_ASPECTS = {
@@ -29,6 +26,29 @@ MAJOR_ASPECTS = {
     "Square": 90,
     "Sextile": 60
 }
+
+# Sign names for conversion
+SIGNS = [
+    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+]
+
+# Sign abbreviation to full name mapping
+SIGN_MAP = {
+    "Ari": "Aries", "Tau": "Taurus", "Gem": "Gemini", "Can": "Cancer",
+    "Leo": "Leo", "Vir": "Virgo", "Lib": "Libra", "Sco": "Scorpio",
+    "Sag": "Sagittarius", "Cap": "Capricorn", "Aqu": "Aquarius", "Pis": "Pisces"
+}
+
+
+def sign_to_abs_degree(sign: str, position: float) -> float:
+    """Convert sign + position to absolute degree (0-360)"""
+    try:
+        sign_idx = SIGNS.index(sign)
+        return sign_idx * 30 + position
+    except ValueError:
+        logger.warning(f"Unknown sign: {sign}, defaulting to 0")
+        return 0
 
 
 def build_transits(
@@ -73,7 +93,6 @@ def build_transits(
         logger.info(f"Using timezone: {tz_str} for transits")
         
         # Create AstrologicalSubject for transit date
-        # Note: Kerykeion expects local time, but we'll use UTC coordinates
         transit_subject = AstrologicalSubject(
             name="Transit",
             year=transit_date.year,
@@ -84,52 +103,40 @@ def build_transits(
             lat=birth_lat,
             lng=birth_lng,
             tz_str=tz_str,
-            city="Transit Location"
+            city="Transit Location",
+            online=False
         )
         
         # Extract transit planet positions
         transit_planets = {}
-        for planet_name in PLANETS:
-            # Get planet data from Kerykeion subject
-            planet_name_lower = planet_name.lower()
-            planet_data = getattr(transit_subject, planet_name_lower, None)
+        for planet_attr in PLANET_ATTRS:
+            planet_obj = getattr(transit_subject._model, planet_attr)
+            planet_name = planet_obj.name
+            sign_abbr = planet_obj.sign
+            sign = SIGN_MAP.get(sign_abbr, sign_abbr)
+            position = planet_obj.position
+            retrograde = planet_obj.retrograde
             
-            if planet_data:
-                transit_planets[planet_name] = {
-                    "sign": planet_data.get("sign", "Unknown"),
-                    "position": round(planet_data.get("position", 0.0), 2),
-                    "retrograde": planet_data.get("retrograde", False)
-                }
+            transit_planets[planet_name] = {
+                "sign": sign,
+                "position": round(position, 2),
+                "retrograde": retrograde
+            }
         
         # Calculate aspects between transit planets and natal planets
         natal_planets = natal_chart_json.get("planets", {})
         transit_aspects = []
         
         for transit_name, transit_data in transit_planets.items():
-            transit_pos = transit_data["position"]
-            transit_sign = transit_data["sign"]
+            transit_abs = sign_to_abs_degree(transit_data["sign"], transit_data["position"])
             
             for natal_name, natal_data in natal_planets.items():
                 if natal_name == "Ascendant":
                     continue  # Skip Ascendant for transit aspects
                 
-                natal_deg = natal_data.get("deg", 0)
                 natal_sign = natal_data.get("sign", "")
-                
-                # Calculate absolute degrees (sign * 30 + degree in sign)
-                sign_names = [
-                    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-                    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
-                ]
-                
-                try:
-                    transit_sign_idx = sign_names.index(transit_sign)
-                    natal_sign_idx = sign_names.index(natal_sign)
-                except ValueError:
-                    continue
-                
-                transit_abs = transit_sign_idx * 30 + transit_pos
-                natal_abs = natal_sign_idx * 30 + natal_deg
+                natal_deg = natal_data.get("deg", 0)
+                natal_abs = sign_to_abs_degree(natal_sign, natal_deg)
                 
                 # Calculate aspect angle
                 angle_diff = abs(transit_abs - natal_abs)
