@@ -1,5 +1,0 @@
-Extract the target date for transit calculations from the following message:
-
-{text}
-
-Return only the JSON object with the extracted date.

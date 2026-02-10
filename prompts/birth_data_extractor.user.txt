@@ -1,5 +1,0 @@
-Extract birth data from the following message:
-
-{text}
-
-Return only the JSON object with the extracted data.

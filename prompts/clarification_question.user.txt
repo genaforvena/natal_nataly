@@ -1,8 +1,0 @@
-Generate a friendly clarification question for the following missing fields:
-
-{missing_fields}
-
-User's previous message was:
-{user_message}
-
-Generate ONLY the question text, no JSON or formatting.
