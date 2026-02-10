@@ -1,5 +1,7 @@
 # natal_nataly
 
+[![CI Tests](https://github.com/genaforvena/natal_nataly/actions/workflows/ci.yml/badge.svg)](https://github.com/genaforvena/natal_nataly/actions/workflows/ci.yml)
+
 Stateful personal astrology assistant bot for Telegram with multi-profile support, natural language input, and conversational AI. Generates natal charts locally using Swiss Ephemeris and provides context-aware astrological guidance.
 
 ## Quick Start (One-Click Local Test)
@@ -296,6 +298,7 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 
 ## Documentation
 
+- See [CI_CD_QUICKSTART.md](CI_CD_QUICKSTART.md) for quick CI/CD setup checklist
 - See [TESTING.md](TESTING.md) for CI/CD pipeline and testing guide
 - See [BRANCH_PROTECTION_SETUP.md](BRANCH_PROTECTION_SETUP.md) for enabling required CI/CD checks on PRs
 - See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
