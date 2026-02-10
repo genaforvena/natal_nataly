@@ -8,8 +8,10 @@ from db import init_db
 class HealthCheckFilter(logging.Filter):
     """Filter out health check endpoint logs to reduce noise."""
     def filter(self, record: logging.LogRecord) -> bool:
-        # Filter out logs containing '/health' endpoint
-        return '/health' not in record.getMessage()
+        # Filter out uvicorn access logs for GET/HEAD requests to /health endpoint
+        # This matches the exact pattern: "GET /health HTTP" or "HEAD /health HTTP"
+        message = record.getMessage()
+        return not ('GET /health HTTP' in message or 'HEAD /health HTTP' in message)
 
 
 # Configure logging
