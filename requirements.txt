@@ -10,3 +10,4 @@ openai
 python-dotenv
 httpx
 pyyaml
+pytest
