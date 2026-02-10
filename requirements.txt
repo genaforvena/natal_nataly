@@ -8,3 +8,4 @@ sqlalchemy
 openai
 python-dotenv
 httpx
+pyyaml

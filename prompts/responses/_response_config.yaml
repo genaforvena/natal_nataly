@@ -1,0 +1,31 @@
+natal_reading:
+  include_sections:
+    - psychological_profile
+    - strengths
+    - tensions
+    - life_path
+    - relationships
+  output_style: longform
+  apply_personality: true
+
+transit_reading:
+  include_sections:
+    - active_transits
+    - long_term_cycles
+    - recommendations
+  output_style: longform
+  apply_personality: true
+
+assistant_chat:
+  include_sections:
+    - grounded_reply
+    - chart_references
+  output_style: conversational
+  apply_personality: true
+
+clarification:
+  include_sections:
+    - friendly_question
+    - context_acknowledgment
+  output_style: brief
+  apply_personality: true

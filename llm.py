@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from openai import OpenAI
-from prompt_loader import get_prompt
+from prompt_loader import get_prompt, load_parser_prompt, load_response_prompt
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -31,30 +31,100 @@ else:
     raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Use 'deepseek' or 'groq'.")
 
 
+def call_llm(prompt_type: str, variables: dict, temperature: float = 0.7, is_parser: bool = None) -> str:
+    """
+    Universal LLM call function with new prompt architecture.
+    
+    This function automatically determines if the prompt is a parser or response type,
+    loads the appropriate prompt (with or without personality), renders variables,
+    and makes the LLM API call.
+    
+    Args:
+        prompt_type: Prompt identifier, e.g., "parser/intent", "responses/natal_reading"
+        variables: Dictionary of variables to render in the prompt
+        temperature: Temperature for LLM sampling (default 0.7)
+        is_parser: Explicitly set if this is a parser prompt (optional, auto-detected from prompt_type)
+        
+    Returns:
+        String response from LLM
+        
+    Example:
+        call_llm(
+            prompt_type="responses/natal_reading",
+            variables={"chart_json": chart_data},
+            temperature=0.7
+        )
+    """
+    logger.debug(f"call_llm invoked with prompt_type={prompt_type}")
+    
+    try:
+        # Auto-detect prompt type if not specified
+        if is_parser is None:
+            is_parser = prompt_type.startswith("parser/") or "/parser/" in prompt_type
+        
+        # Load appropriate prompt (parser = no personality, response = with personality)
+        if is_parser:
+            # Remove "parser/" prefix if present for loading
+            prompt_name = prompt_type.replace("parser/", "").replace("/parser/", "")
+            prompt_template = load_parser_prompt(prompt_name)
+            logger.info(f"Loaded PARSER prompt: {prompt_name} (no personality)")
+        else:
+            # Remove "responses/" prefix if present for loading
+            prompt_name = prompt_type.replace("responses/", "").replace("/responses/", "")
+            prompt_template = load_response_prompt(prompt_name)
+            logger.info(f"Loaded RESPONSE prompt: {prompt_name} (WITH personality)")
+        
+        # Render variables into the template
+        try:
+            rendered_prompt = prompt_template.format(**variables)
+        except KeyError as e:
+            logger.error(f"Missing variable in prompt template: {e}")
+            # Fallback: use template as-is if variables don't match
+            rendered_prompt = prompt_template
+            logger.warning("Using prompt template without variable substitution")
+        
+        logger.debug(f"Rendered prompt length: {len(rendered_prompt)} characters")
+        
+        # Make LLM API call
+        logger.info(f"Making LLM API call with model: {MODEL}, temperature: {temperature}")
+        
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "user", "content": rendered_prompt}
+            ],
+            temperature=temperature
+        )
+        
+        result = response.choices[0].message.content
+        logger.info(f"LLM API call successful, response length: {len(result)} characters")
+        logger.debug(f"LLM response preview: {result[:100]}...")
+        
+        return result
+        
+    except Exception as e:
+        logger.exception(f"Error in call_llm: {e}")
+        raise
+
+
 def extract_birth_data(text: str) -> dict:
     """
     Use LLM to extract birth data from natural language text.
+    Uses PARSER prompt (no personality layer).
     
     Returns:
         dict with keys: dob, time, lat, lng, missing_fields
     """
     logger.debug(f"extract_birth_data called with message length: {len(text)}")
     try:
-        system_prompt = get_prompt("birth_data_extractor.system")
-        user_prompt = get_prompt("birth_data_extractor.user").format(text=text)
-        
-        logger.info(f"Making LLM API call for birth data extraction with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1  # Low temperature for consistent extraction
+        # Use new prompt architecture
+        result = call_llm(
+            prompt_type="parser/normalize_birth_input",
+            variables={"text": text},
+            temperature=0.1,  # Low temperature for consistent extraction
+            is_parser=True
         )
         
-        result = response.choices[0].message.content
         logger.debug(f"LLM response: {result}")
         
         # Parse JSON response
@@ -84,6 +154,7 @@ def extract_birth_data(text: str) -> dict:
 def generate_clarification_question(missing_fields: list, user_message: str) -> str:
     """
     Generate a friendly clarification question for missing birth data fields.
+    Uses RESPONSE prompt (with personality layer).
     
     Args:
         missing_fields: List of missing field names
@@ -94,24 +165,17 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
     """
     logger.debug(f"Generating clarification question for fields: {missing_fields}")
     try:
-        system_prompt = get_prompt("clarification_question.system")
-        user_prompt = get_prompt("clarification_question.user").format(
-            missing_fields=json.dumps(missing_fields),
-            user_message=user_message
+        # Use new prompt architecture (this is a response, so includes personality)
+        result = call_llm(
+            prompt_type="responses/clarification",
+            variables={
+                "missing_fields": json.dumps(missing_fields),
+                "user_message": user_message
+            },
+            temperature=0.7,  # Moderate temperature for natural language
+            is_parser=False
         )
         
-        logger.info(f"Making LLM API call for clarification question with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7  # Moderate temperature for natural language
-        )
-        
-        result = response.choices[0].message.content
         logger.info(f"Clarification question generated, length: {len(result)} characters")
         
         return result.strip()
@@ -135,32 +199,30 @@ def interpret_chart(chart_json: dict, question: str = None) -> str:
     try:
         chart_str = json.dumps(chart_json, indent=2)
         
-        system_prompt = get_prompt("astrologer_chat.system")
-        
         if question:
             # Conversational mode - user asking about their chart
-            user_prompt = get_prompt("astrologer_chat.user").format(
-                chart_json=chart_str,
-                question=question
+            # Use assistant_chat response prompt (WITH personality)
+            result = call_llm(
+                prompt_type="responses/assistant_chat",
+                variables={
+                    "chart_json": chart_str,
+                    "question": question
+                },
+                temperature=0.7,
+                is_parser=False
             )
         else:
             # Initial reading mode - full chart interpretation
-            user_prompt = get_prompt("astrologer_initial_reading.user").format(
-                chart_json=chart_str
+            # Use natal_reading response prompt (WITH personality)
+            result = call_llm(
+                prompt_type="responses/natal_reading",
+                variables={
+                    "chart_json": chart_str
+                },
+                temperature=0.7,
+                is_parser=False
             )
         
-        logger.info(f"Making LLM API call with model: {MODEL}")
-        logger.debug(f"Chart data size: {len(chart_str)} characters")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        
-        result = response.choices[0].message.content
         logger.info(f"LLM API call successful, response length: {len(result)} characters")
         logger.debug(f"LLM response preview: {result[:100]}...")
         
@@ -173,6 +235,7 @@ def interpret_chart(chart_json: dict, question: str = None) -> str:
 def classify_intent(text: str) -> dict:
     """
     Classify user message intent using LLM.
+    Uses PARSER prompt (no personality layer).
     
     Args:
         text: User's message text
@@ -182,22 +245,16 @@ def classify_intent(text: str) -> dict:
         Example: {"intent": "ask_about_chart", "confidence": 0.95}
     """
     logger.debug(f"classify_intent called with message length: {len(text)}")
+    result = None  # Initialize to avoid UnboundLocalError
     try:
-        system_prompt = get_prompt("intent_classifier.system")
-        user_prompt = f"User message: {text}"
-        
-        logger.info(f"Making LLM API call for intent classification with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1  # Low temperature for consistent classification
+        # Use new prompt architecture (parser = no personality)
+        result = call_llm(
+            prompt_type="parser/intent",
+            variables={"text": text},
+            temperature=0.1,  # Low temperature for consistent classification
+            is_parser=True
         )
         
-        result = response.choices[0].message.content
         logger.debug(f"LLM response: {result}")
         
         # Parse JSON response
@@ -217,7 +274,8 @@ def classify_intent(text: str) -> dict:
         return intent_data
     except json.JSONDecodeError as e:
         logger.exception(f"Failed to parse JSON from LLM response: {e}")
-        logger.error(f"Raw response: {result}")
+        if result:
+            logger.error(f"Raw response: {result}")
         # Return unknown intent on parse error
         return {"intent": "unknown", "confidence": 0.0}
     except Exception as e:
@@ -239,39 +297,23 @@ def generate_assistant_response(context: dict, user_message: str) -> str:
     """
     logger.debug(f"generate_assistant_response called")
     try:
-        # Build system prompt from personality + core knowledge
-        personality_prompt = get_prompt("assistant_personality.system")
-        astrology_prompt = get_prompt("astrologer_core.system")
-        system_prompt = f"{personality_prompt}\n\n{astrology_prompt}"
-        
-        # Build user prompt with context
+        # Build context for prompt
         natal_chart = context.get("natal_chart")
         profile_name = context.get("profile_name")
         
         chart_str = json.dumps(natal_chart, indent=2) if natal_chart else "No active profile"
-        profile_info = f"Profile: {profile_name}" if profile_name else "Profile: Self"
         
-        user_prompt = f"""{profile_info}
-
-Active natal chart:
-{chart_str}
-
-User question: {user_message}
-
-Provide a concise, insightful response based on the natal chart."""
-        
-        logger.info(f"Making LLM API call for assistant response with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7  # Moderate temperature for natural conversation
+        # Use new prompt architecture (response = with personality)
+        result = call_llm(
+            prompt_type="responses/assistant_chat",
+            variables={
+                "chart_json": chart_str,
+                "question": user_message
+            },
+            temperature=0.7,  # Moderate temperature for natural conversation
+            is_parser=False
         )
         
-        result = response.choices[0].message.content
         logger.info(f"Assistant response generated, length: {len(result)} characters")
         
         return result.strip()
@@ -283,6 +325,7 @@ Provide a concise, insightful response based on the natal chart."""
 def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str) -> str:
     """
     Interpret transits in the context of the natal chart.
+    Uses RESPONSE prompt (with personality layer).
     
     Args:
         natal_chart_json: User's natal chart data
@@ -294,31 +337,22 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
     """
     logger.debug(f"interpret_transits called")
     try:
-        system_prompt = get_prompt("transit_interpretation.system")
-        
         # Format natal chart for prompt
         chart_str = json.dumps(natal_chart_json, indent=2)
         natal_chart_section = f"=== NATAL CHART ===\n{chart_str}"
         
-        # Build user prompt
-        user_prompt = get_prompt("transit_interpretation.user").format(
-            natal_chart=natal_chart_section,
-            transits=transits_text,
-            question=user_question
+        # Use new prompt architecture (response = with personality)
+        result = call_llm(
+            prompt_type="responses/transit_reading",
+            variables={
+                "natal_chart": natal_chart_section,
+                "transits": transits_text,
+                "question": user_question
+            },
+            temperature=0.7,
+            is_parser=False
         )
         
-        logger.info(f"Making LLM API call for transit interpretation with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7
-        )
-        
-        result = response.choices[0].message.content
         logger.info(f"Transit interpretation generated, length: {len(result)} characters")
         
         return result.strip()
@@ -330,6 +364,7 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
 def extract_transit_date(text: str) -> dict:
     """
     Use LLM to extract target date for transit calculations from natural language text.
+    Uses PARSER prompt (no personality layer).
     
     Args:
         text: User's message text
@@ -340,21 +375,14 @@ def extract_transit_date(text: str) -> dict:
     logger.debug(f"extract_transit_date called with message length: {len(text)}")
     result = None  # Initialize to avoid UnboundLocalError
     try:
-        system_prompt = get_prompt("transit_date_extractor.system")
-        user_prompt = get_prompt("transit_date_extractor.user").format(text=text)
-        
-        logger.info(f"Making LLM API call for transit date extraction with model: {MODEL}")
-        
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.1  # Low temperature for consistent extraction
+        # Use new prompt architecture (parser = no personality)
+        result = call_llm(
+            prompt_type="parser/detect_transit_date",
+            variables={"text": text},
+            temperature=0.1,  # Low temperature for consistent extraction
+            is_parser=True
         )
         
-        result = response.choices[0].message.content
         logger.debug(f"LLM response: {result}")
         
         # Parse JSON response
