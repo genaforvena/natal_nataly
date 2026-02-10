@@ -1,0 +1,7 @@
+{natal_chart}
+
+{transits}
+
+User question: {question}
+
+Based on the natal chart and current transits shown above, provide an astrological interpretation that addresses the user's question. Focus on the most significant transits and their practical implications.

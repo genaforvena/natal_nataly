@@ -278,3 +278,50 @@ Provide a concise, insightful response based on the natal chart."""
     except Exception as e:
         logger.exception(f"Error generating assistant response: {e}")
         raise
+
+
+def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str) -> str:
+    """
+    Interpret transits in the context of the natal chart.
+    
+    Args:
+        natal_chart_json: User's natal chart data
+        transits_text: Formatted transit data (from format_transits_for_llm)
+        user_question: User's original question
+        
+    Returns:
+        String interpretation of transits
+    """
+    logger.debug(f"interpret_transits called")
+    try:
+        system_prompt = get_prompt("transit_interpretation.system")
+        
+        # Format natal chart for prompt
+        chart_str = json.dumps(natal_chart_json, indent=2)
+        natal_chart_section = f"=== NATAL CHART ===\n{chart_str}"
+        
+        # Build user prompt
+        user_prompt = get_prompt("transit_interpretation.user").format(
+            natal_chart=natal_chart_section,
+            transits=transits_text,
+            question=user_question
+        )
+        
+        logger.info(f"Making LLM API call for transit interpretation with model: {MODEL}")
+        
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content
+        logger.info(f"Transit interpretation generated, length: {len(result)} characters")
+        
+        return result.strip()
+    except Exception as e:
+        logger.exception(f"Error interpreting transits: {e}")
+        raise

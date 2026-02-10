@@ -1033,6 +1033,86 @@ async def handle_general_question(session, user: User, chat_id: int, text: str):
         await send_telegram_message(chat_id, "Произошла ошибка. Попробуй переформулировать вопрос.")
 
 
+async def handle_transit_question(session, user: User, chat_id: int, text: str):
+    """Handle transit-related questions"""
+    logger.info(f"Handling transit_question for user {user.telegram_id}")
+    
+    try:
+        # Check if user has a natal chart
+        # First, try to get chart from unified UserNatalChart table
+        user_chart = session.query(UserNatalChart).filter_by(
+            telegram_id=user.telegram_id,
+            is_active=True
+        ).order_by(UserNatalChart.created_at.desc()).first()
+        
+        chart = None
+        if user_chart:
+            chart = json.loads(user_chart.chart_json)
+            logger.info(f"Using chart from UserNatalChart for transits")
+        else:
+            # Fallback to profile chart
+            profile = get_active_profile(session, user)
+            
+            if not profile or not profile.natal_chart_json:
+                # Fallback to legacy chart stored in user
+                if not user.natal_chart_json:
+                    logger.warning(f"User {user.telegram_id} requested transits but has no chart")
+                    await send_telegram_message(
+                        chat_id,
+                        "Сначала пришлите данные рождения или загрузите натальную карту.\n\n"
+                        "Мне нужна твоя натальная карта, чтобы рассчитать транзиты."
+                    )
+                    return
+                
+                chart = json.loads(user.natal_chart_json)
+            else:
+                chart = json.loads(profile.natal_chart_json)
+        
+        # Parse transit date from user's message
+        from services.date_parser import parse_transit_date
+        transit_date = parse_transit_date(text)
+        logger.info(f"Parsed transit date: {transit_date.isoformat()}")
+        
+        # Calculate transits
+        from services.transit_builder import build_transits, format_transits_for_llm
+        transits = build_transits(chart, transit_date)
+        transits_text = format_transits_for_llm(transits)
+        
+        logger.info(f"Transits calculated successfully")
+        
+        # Get LLM interpretation
+        from llm import interpret_transits
+        reading = interpret_transits(chart, transits_text, text)
+        
+        # Save reading to database
+        reading_record = save_reading(session, user.telegram_id, reading)
+        reading_id = reading_record.id
+        
+        # Track LLM prompt for reproducibility
+        from llm import MODEL, get_prompt
+        try:
+            prompt_content = get_prompt("transit_interpretation.system")
+            track_reading_prompt(reading_id, "transit_interpretation", prompt_content, MODEL)
+        except Exception as e:
+            logger.warning(f"Failed to track reading prompt: {e}")
+        
+        # Send reading to user
+        response = await send_telegram_message(chat_id, reading)
+        
+        # Mark as delivered if successful
+        if response is not None:
+            mark_reading_delivered(session, reading_id)
+        
+        logger.info(f"Transit interpretation sent successfully for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error handling transit question: {e}")
+        await send_telegram_message(
+            chat_id,
+            "Произошла ошибка при расчёте транзитов. Пожалуйста, попробуйте ещё раз."
+        )
+
+
 async def route_message(session, user: User, chat_id: int, text: str):
     """
     Route message based on user state and intent classification.
@@ -1057,63 +1137,30 @@ async def route_message(session, user: User, chat_id: int, text: str):
     # For users with charts, use intent-based routing for conversational flow
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
-            # Classify intent
-            intent_result = classify_intent(text)
-            intent = intent_result.get("intent", "unknown")
-            confidence = intent_result.get("confidence", 0.0)
+            # Use rule-based intent detection (no LLM)
+            from services.intent_router import detect_request_type
+            intent_type = detect_request_type(text)
             
-            logger.info(f"Intent classified: {intent} (confidence: {confidence})")
+            logger.info(f"Intent detected: {intent_type}")
             
-            # Route based on intent
-            if intent == "provide_birth_data":
+            # Route based on intent type
+            if intent_type == "birth_input":
                 # User wants to provide new birth data (maybe for a new profile)
                 logger.info("User providing new birth data, switching to awaiting_birth_data state")
                 update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
                 await handle_awaiting_birth_data(session, user, chat_id, text)
                 
-            elif intent == "ask_about_chart":
-                # User asking about their chart - use assistant mode
-                await handle_chatting_about_chart(session, user, chat_id, text)
+            elif intent_type == "transit_question":
+                # User asking about transits
+                await handle_transit_question(session, user, chat_id, text)
                 
-            elif intent == "ask_general_question":
-                # General astrology question
-                await handle_general_question(session, user, chat_id, text)
-                
-            elif intent == "meta_conversation":
-                # Casual conversation, greetings
-                await handle_meta_conversation(session, user, chat_id, text)
-                
-            elif intent == "new_profile_request":
-                # User wants to create a new profile
-                await send_telegram_message(
-                    chat_id,
-                    "Отлично! Давай создадим новый профиль. Отправь мне данные рождения: дату, время и место."
-                )
-                # Switch to awaiting birth data state but remember we're creating a new profile
-                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
-                
-            elif intent == "switch_profile":
-                # User wants to switch profiles
-                profiles = list_user_profiles(session, user.telegram_id)
-                if len(profiles) <= 1:
-                    await send_telegram_message(
-                        chat_id,
-                        "У тебя пока только один профиль. Хочешь создать ещё один?"
-                    )
-                else:
-                    await handle_profiles_command(session, user, chat_id)
-                    await send_telegram_message(
-                        chat_id,
-                        "Выбери профиль, назвав его имя или номер."
-                    )
-                    
-            elif intent == "clarify_birth_data":
-                # User provided clarification-style response outside clarification flow - treat as chart question
+            elif intent_type == "natal_question":
+                # User asking about their natal chart
                 await handle_chatting_about_chart(session, user, chat_id, text)
                 
             else:
-                # Unknown or low confidence - default to chatting about chart
-                logger.warning(f"Unknown or low confidence intent, defaulting to chart chat")
+                # Default to chatting about chart
+                logger.warning(f"Unknown intent type, defaulting to chart chat")
                 await handle_chatting_about_chart(session, user, chat_id, text)
                 
         except Exception as e:
