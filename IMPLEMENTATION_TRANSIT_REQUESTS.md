@@ -7,11 +7,13 @@ This implementation adds natural language transit support to the natal_nataly as
 ## Key Features
 
 ### 1. Natural Language Intent Detection
-- **Rule-based detection** (no LLM calls for intent detection, saving costs)
+- **LLM-based detection** using existing classify_intent() function
 - Detects three types of requests:
   - `birth_input`: User providing birth data (e.g., "DOB: 1990-05-15...")
   - `natal_question`: Questions about natal chart (e.g., "what does my sun in taurus mean?")
   - `transit_question`: Questions about transits (e.g., "what's happening now?", "how does march 2026 look?")
+- Maps LLM intent classifications to simplified routing categories
+- Graceful fallback to natal_question on errors
 
 ### 2. Flexible Date Parsing
 Supports multiple date formats:
@@ -44,22 +46,29 @@ Supports multiple date formats:
 ### New Modules
 
 #### `services/intent_router.py`
-Rule-based intent detection using keywords and patterns:
+LLM-based intent detection that maps to simplified intent types:
 ```python
 def detect_request_type(user_text: str) -> IntentType:
     """Returns: "birth_input" | "natal_question" | "transit_question" """
 ```
 
-**Keywords for transit detection:**
-- Russian: транзит, сейчас, прогноз, что происходит, как выглядит
-- English: transit, now, forecast, what's happening, how does
-- Month names in both languages
-- Year patterns (20XX)
-- Date patterns (YYYY-MM-DD, DD.MM.YYYY)
+**How it works:**
+- Calls the existing `classify_intent()` function from `llm.py`
+- The LLM classifies messages into detailed intents including `ask_transit_question`
+- Maps LLM response to simplified routing categories:
+  - `provide_birth_data` → `birth_input`
+  - `ask_transit_question` → `transit_question`
+  - All other intents → `natal_question`
+- Fallback to `natal_question` on errors or unknown intents
 
-**Smart phrase matching:**
-- "что делает" or "what does" only trigger transit detection when combined with time references
-- Prevents false positives like "what does my moon mean?"
+**LLM Intent Classifications:**
+The system prompt has been updated to include:
+- `provide_birth_data` - User providing birth information
+- `ask_transit_question` - User asking about transits/current/future influences
+- `ask_about_chart` - Questions about natal chart
+- `ask_general_question` - General astrology questions
+- `meta_conversation` - Casual conversation
+- Other existing intents...
 
 #### `services/date_parser.py`
 Extracts dates from natural language:
@@ -176,8 +185,10 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 ### Transit Question Flow
 1. User sends message (e.g., "what's happening now?")
 2. `route_message()` calls `detect_request_type()`
-3. Intent detected as `"transit_question"`
-4. `handle_transit_question()` is called:
+3. `detect_request_type()` calls LLM's `classify_intent()`
+4. LLM classifies as `"ask_transit_question"`
+5. Intent mapped to `"transit_question"`
+6. `handle_transit_question()` is called:
    - Check if user has natal chart (fail-safe)
    - Parse date from message using `parse_transit_date()`
    - Calculate transits using `build_transits()`
@@ -188,14 +199,15 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 
 ### Natal Question Flow (Unchanged)
 1. User sends message (e.g., "what does my moon mean?")
-2. Intent detected as `"natal_question"`
-3. `handle_chatting_about_chart()` is called
-4. Existing flow continues unchanged
+2. LLM classifies as `"ask_about_chart"`
+3. Intent mapped to `"natal_question"`
+4. `handle_chatting_about_chart()` is called
+5. Existing flow continues unchanged
 
 ## Testing
 
 ### Unit Tests Performed
-- ✅ Intent detection with 9 test cases (Russian + English)
+- ✅ LLM intent classification updated with transit intent
 - ✅ Date parsing with 7 test cases (various formats)
 - ✅ Syntax validation for all Python files
 - ✅ Code review completed
@@ -203,7 +215,7 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 
 ### Test Results
 ```
-Intent Detection: 9/9 passed
+LLM Intent Classification: Updated with ask_transit_question intent
 Date Parsing: 7/7 passed
 Security: 0 vulnerabilities found
 ```
@@ -232,9 +244,11 @@ Uses existing dependencies:
 
 ## Performance Considerations
 
-### Cost Savings
-- Rule-based intent detection (no LLM call) saves ~0.5-1 cent per message
-- Only one LLM call needed per transit question (for interpretation)
+### LLM Usage
+- Intent detection now uses one LLM call per message for classification
+- Total LLM calls per transit question: 2 (1 for intent + 1 for interpretation)
+- Uses low temperature (0.1) for consistent intent classification
+- Graceful fallback on classification errors
 
 ### Computational Load
 - Transit calculation is fast (~100-200ms using Kerykeion)
@@ -252,14 +266,12 @@ Possible improvements (not in scope of this implementation):
 
 ## Maintenance Notes
 
-### Adding New Keywords
-To add transit detection keywords, edit `services/intent_router.py`:
-```python
-TRANSIT_KEYWORDS = [
-    # Add new keywords here
-    "your_keyword", "ваше_ключевое_слово",
-]
+### Improving Intent Classification
+To improve transit detection accuracy, edit the LLM prompt:
 ```
+prompts/intent_classifier.system.txt
+```
+Add more examples of transit questions vs natal questions to help the LLM distinguish them better.
 
 ### Adjusting Aspect Orbs
 To modify aspect orb allowances, edit `services/transit_builder.py`:
@@ -273,6 +285,7 @@ ASPECT_ORBS = {
 
 ### Modifying Prompts
 Edit prompt files in `prompts/` directory:
+- `intent_classifier.system.txt` - Intent classification (includes transit intent)
 - `transit_interpretation.system.txt` - System personality
 - `transit_interpretation.user.txt` - User prompt template
 

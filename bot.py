@@ -1137,7 +1137,7 @@ async def route_message(session, user: User, chat_id: int, text: str):
     # For users with charts, use intent-based routing for conversational flow
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
-            # Use rule-based intent detection (no LLM)
+            # Use LLM-based intent detection
             from services.intent_router import detect_request_type
             intent_type = detect_request_type(text)
             
