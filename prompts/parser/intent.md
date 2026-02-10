@@ -22,52 +22,52 @@ Your task is to analyze user messages and classify their intent with high accura
 
 ## OUTPUT FORMAT
 ```json
-{
+{{
   "intent": "intent_name",
   "confidence": 0.95
-}
+}}
 ```
 
 ## EXAMPLES
 
 **Input:** "Я родился 15 мая 1990 года в 14:30 в Москве"
-**Output:** {"intent": "provide_birth_data", "confidence": 0.98}
+**Output:** {{"intent": "provide_birth_data", "confidence": 0.98}}
 
 **Input:** "DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0"
-**Output:** {"intent": "provide_birth_data", "confidence": 0.99}
+**Output:** {{"intent": "provide_birth_data", "confidence": 0.99}}
 
 **Input:** "Что означает Солнце в Тельце?"
-**Output:** {"intent": "ask_general_question", "confidence": 0.92}
+**Output:** {{"intent": "ask_general_question", "confidence": 0.92}}
 
 **Input:** "Почему я такой упрямый?"
-**Output:** {"intent": "ask_about_chart", "confidence": 0.85}
+**Output:** {{"intent": "ask_about_chart", "confidence": 0.85}}
 
 **Input:** "Что происходит сейчас по транзитам?"
-**Output:** {"intent": "ask_about_chart", "confidence": 0.80}
+**Output:** {{"intent": "ask_about_chart", "confidence": 0.80}}
 
 **Input:** "What's happening in march 2026?"
-**Output:** {"intent": "ask_general_question", "confidence": 0.75}
+**Output:** {{"intent": "ask_general_question", "confidence": 0.75}}
 
 **Input:** "Что сейчас делает Сатурн в моей карте?"
-**Output:** {"intent": "ask_about_chart", "confidence": 0.85}
+**Output:** {{"intent": "ask_about_chart", "confidence": 0.85}}
 
 **Input:** "What does my moon in cancer mean?"
-**Output:** {"intent": "ask_about_chart", "confidence": 0.90}
+**Output:** {{"intent": "ask_about_chart", "confidence": 0.90}}
 
 **Input:** "Хочу добавить профиль моей девушки"
-**Output:** {"intent": "new_profile_request", "confidence": 0.95}
+**Output:** {{"intent": "new_profile_request", "confidence": 0.95}}
 
 **Input:** "14:30"
-**Output:** {"intent": "clarify_birth_data", "confidence": 0.90}
+**Output:** {{"intent": "clarify_birth_data", "confidence": 0.90}}
 
 **Input:** "Привет, как дела?"
-**Output:** {"intent": "meta_conversation", "confidence": 0.98}
+**Output:** {{"intent": "meta_conversation", "confidence": 0.98}}
 
 **Input:** "Переключись на профиль Маши"
-**Output:** {"intent": "switch_profile", "confidence": 0.96}
+**Output:** {{"intent": "switch_profile", "confidence": 0.96}}
 
 **Input:** "fgjhfgjh"
-**Output:** {"intent": "unknown", "confidence": 0.50}
+**Output:** {{"intent": "unknown", "confidence": 0.50}}
 
 ---
 
