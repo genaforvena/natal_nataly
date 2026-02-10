@@ -30,6 +30,9 @@ Base = declarative_base()
 
 def init_db():
     logger.info("Initializing database schema")
-    from models import User, BirthData, Reading, AstroProfile, PipelineLog, NatalChart, DebugSession, UserNatalChart
+    from models import (
+        User, BirthData, Reading, AstroProfile, PipelineLog,
+        NatalChart, DebugSession, UserNatalChart, ConversationMessage
+    )
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized successfully")

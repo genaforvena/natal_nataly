@@ -31,7 +31,13 @@ else:
     raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Use 'deepseek' or 'groq'.")
 
 
-def call_llm(prompt_type: str, variables: dict, temperature: float = 0.7, is_parser: bool = None) -> str:
+def call_llm(
+    prompt_type: str,
+    variables: dict,
+    temperature: float = 0.7,
+    is_parser: bool = None,
+    conversation_history: list = None
+) -> str:
     """
     Universal LLM call function with new prompt architecture.
     
@@ -44,6 +50,7 @@ def call_llm(prompt_type: str, variables: dict, temperature: float = 0.7, is_par
         variables: Dictionary of variables to render in the prompt
         temperature: Temperature for LLM sampling (default 0.7)
         is_parser: Explicitly set if this is a parser prompt (optional, auto-detected from prompt_type)
+        conversation_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
         
     Returns:
         String response from LLM
@@ -88,11 +95,20 @@ def call_llm(prompt_type: str, variables: dict, temperature: float = 0.7, is_par
         # Make LLM API call
         logger.info(f"Making LLM API call with model: {MODEL}, temperature: {temperature}")
         
+        # Build messages list
+        messages = []
+        
+        # Add conversation history if provided
+        if conversation_history:
+            logger.info(f"Including conversation history: {len(conversation_history)} messages")
+            messages.extend(conversation_history)
+        
+        # Add current prompt as user message
+        messages.append({"role": "user", "content": rendered_prompt})
+        
         response = client.chat.completions.create(
             model=MODEL,
-            messages=[
-                {"role": "user", "content": rendered_prompt}
-            ],
+            messages=messages,
             temperature=temperature
         )
         
@@ -184,13 +200,14 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
         raise
 
 
-def interpret_chart(chart_json: dict, question: str = None) -> str:
+def interpret_chart(chart_json: dict, question: str = None, conversation_history: list = None) -> str:
     """
     Interpret natal chart using LLM.
     
     Args:
         chart_json: The natal chart data
         question: Optional user question for conversational mode
+        conversation_history: List of previous conversation messages
         
     Returns:
         String interpretation
@@ -209,7 +226,8 @@ def interpret_chart(chart_json: dict, question: str = None) -> str:
                     "question": question
                 },
                 temperature=0.7,
-                is_parser=False
+                is_parser=False,
+                conversation_history=conversation_history
             )
         else:
             # Initial reading mode - full chart interpretation
@@ -284,13 +302,14 @@ def classify_intent(text: str) -> dict:
         return {"intent": "unknown", "confidence": 0.0}
 
 
-def generate_assistant_response(context: dict, user_message: str) -> str:
+def generate_assistant_response(context: dict, user_message: str, conversation_history: list = None) -> str:
     """
     Generate assistant-style response using personality and astrology knowledge.
     
     Args:
         context: Dict with natal_chart, profile_name, recent_questions, etc.
         user_message: The user's current message
+        conversation_history: List of previous conversation messages
         
     Returns:
         String response from assistant
@@ -311,7 +330,8 @@ def generate_assistant_response(context: dict, user_message: str) -> str:
                 "question": user_message
             },
             temperature=0.7,  # Moderate temperature for natural conversation
-            is_parser=False
+            is_parser=False,
+            conversation_history=conversation_history
         )
         
         logger.info(f"Assistant response generated, length: {len(result)} characters")
