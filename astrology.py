@@ -1,3 +1,20 @@
+"""
+DEPRECATED: This module is no longer used in production.
+The natal chart generation has been migrated to use Kerykeion library.
+
+See: services/chart_builder.py for the new implementation.
+
+This file is kept for reference only. The old implementation used pyswisseph directly,
+while the new implementation uses Kerykeion (which itself uses Swiss Ephemeris as backend)
+and provides better structure and timezone handling.
+
+Migration notes:
+- Old function: generate_natal_chart(dob, time, lat, lng, original_input)
+- New function: services.chart_builder.build_natal_chart_text_and_json(...)
+- New implementation provides both text export (AstroSeek format) and structured JSON
+- Timezone is automatically determined from coordinates using timezonefinder
+"""
+
 import swisseph as swe
 import logging
 from datetime import datetime, timezone

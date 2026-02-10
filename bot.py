@@ -3,7 +3,7 @@ import json
 import httpx
 import logging
 from datetime import datetime, timezone
-from astrology import generate_natal_chart, get_engine_version
+from services.chart_builder import build_natal_chart_text_and_json
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
 from models import User, BirthData, Reading, AstroProfile, UserNatalChart
@@ -169,6 +169,126 @@ def mark_reading_delivered(session, reading_id: int):
     except Exception as e:
         logger.exception(f"Error marking reading {reading_id} as delivered: {e}")
         raise
+
+
+def format_original_input(birth_data: dict) -> str:
+    """
+    Format birth data as original input string.
+    
+    Args:
+        birth_data: Dictionary with keys: dob, time, lat, lng
+    
+    Returns:
+        Formatted string like "DOB: 1990-05-15, Time: 14:30, Lat: 40.7128, Lng: -74.0060"
+    """
+    return f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}"
+
+
+def generate_natal_chart_kerykeion(birth_data: dict) -> dict:
+    """
+    Generate natal chart using Kerykeion with both text export and structured JSON.
+    
+    Args:
+        birth_data: Dictionary with keys: dob (YYYY-MM-DD), time (HH:MM), lat, lng
+    
+    Returns:
+        Dictionary with chart_json (structured data compatible with old format)
+    """
+    logger.info("Generating natal chart using Kerykeion")
+    
+    try:
+        # Parse date and time
+        dob = birth_data["dob"]  # Format: YYYY-MM-DD
+        time = birth_data["time"]  # Format: HH:MM
+        lat = birth_data["lat"]
+        lng = birth_data["lng"]
+        
+        # Parse date components
+        year, month, day = map(int, dob.split("-"))
+        hour, minute = map(int, time.split(":"))
+        
+        # Build chart using Kerykeion
+        result = build_natal_chart_text_and_json(
+            name="User",
+            year=year,
+            month=month,
+            day=day,
+            hour=hour,
+            minute=minute,
+            lat=lat,
+            lng=lng,
+            city=birth_data.get("location", "Unknown"),
+            nation=birth_data.get("country", "Unknown")
+        )
+        
+        # Convert new format to old format for compatibility with existing LLM code
+        # The old format expects: planets, houses, aspects, source, original_input, engine_version, created_at
+        chart_json = result["chart_json"]
+        
+        # Convert planets from new format to old format
+        # New: [{"name": "Sun", "sign": "Taurus", "position": 24.39, "house": 9, "retrograde": false}]
+        # Old: {"Sun": {"sign": "Taurus", "deg": 24.39, "house": 9, "retrograde": false}}
+        planets_old_format = {}
+        for planet in chart_json["planets"]:
+            planets_old_format[planet["name"]] = {
+                "sign": planet["sign"],
+                "deg": planet["position"],
+                "house": planet["house"],
+                "retrograde": planet["retrograde"]
+            }
+        
+        # Add Ascendant from angles
+        planets_old_format["Ascendant"] = {
+            "sign": chart_json["angles"]["asc"]["sign"],
+            "deg": chart_json["angles"]["asc"]["position"],
+            "house": 1,
+            "retrograde": False
+        }
+        
+        # Convert houses from new format to old format
+        # New: [{"number": 1, "sign": "Virgo", "position": 19.27}]
+        # Old: {"1": {"sign": "Virgo", "deg": 19.27}}
+        houses_old_format = {}
+        for house in chart_json["houses"]:
+            houses_old_format[str(house["number"])] = {
+                "sign": house["sign"],
+                "deg": house["position"]
+            }
+        
+        # Convert aspects from new format to old format
+        # New: [{"planet1": "Sun", "planet2": "Moon", "aspect": "Trine", "orb": 5.51, "applying": false}]
+        # Old: [{"from": "Sun", "to": "Moon", "type": "Trine", "orb": 5.51, "applying": false}]
+        aspects_old_format = []
+        for aspect in chart_json["aspects"]:
+            aspects_old_format.append({
+                "from": aspect["planet1"],
+                "to": aspect["planet2"],
+                "type": aspect["aspect"],
+                "orb": aspect["orb"],
+                "applying": aspect["applying"]
+            })
+        
+        # Build final chart in old format
+        original_input = format_original_input({"dob": dob, "time": time, "lat": lat, "lng": lng})
+        chart_old_format = {
+            "planets": planets_old_format,
+            "houses": houses_old_format,
+            "aspects": aspects_old_format,
+            "source": "generated",
+            "original_input": original_input,
+            "engine_version": chart_json["meta"]["engine"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            # Store the new format data for future use
+            "_kerykeion_data": chart_json,
+            "_text_export": result["text_export"]
+        }
+        
+        logger.info("Natal chart generated successfully using Kerykeion")
+        return chart_old_format
+        
+    except Exception as e:
+        logger.exception(f"Failed to generate natal chart with Kerykeion: {e}")
+        raise Exception(f"Failed to generate natal chart: {str(e)}")
 
 
 # ============================================================================
@@ -506,24 +626,20 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             birth_data = json.loads(user.pending_birth_data)
             normalized_birth_data = json.loads(user.pending_normalized_data)
             
-            # Generate natal chart
+            # Generate natal chart using Kerykeion
             logger.info(f"Generating natal chart for user {user.telegram_id}")
-            original_input = f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}"
-            chart = generate_natal_chart(
-                birth_data["dob"],
-                birth_data["time"],
-                birth_data["lat"],
-                birth_data["lng"],
-                original_input=original_input
-            )
+            chart = generate_natal_chart_kerykeion(birth_data)
+            
+            # Get original input from chart
+            original_input = chart.get("original_input", format_original_input(birth_data))
             
             # Store natal chart with versioning (legacy NatalChart table)
             chart_id = store_natal_chart(
                 user.telegram_id,
                 birth_data,
                 chart,
-                get_engine_version(),
-                "SE 2.10"  # Swiss Ephemeris version
+                chart.get("engine_version", "kerykeion_swisseph"),
+                "kerykeion"  # Engine name
             )
             
             # Store in unified UserNatalChart table (new source of truth)
@@ -539,7 +655,7 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                 chart_json=json.dumps(chart, ensure_ascii=False),
                 source="generated",
                 original_input=original_input,
-                engine_version=chart.get("engine_version", get_engine_version()),
+                engine_version=chart.get("engine_version", "kerykeion_swisseph"),
                 is_active=True
             )
             session.add(user_chart)
@@ -729,14 +845,9 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             )
             return
         
-        # Generate natal chart
+        # Generate natal chart using Kerykeion
         logger.info(f"Generating natal chart for user {user.telegram_id}")
-        chart = generate_natal_chart(
-            birth_data["dob"],
-            birth_data["time"],
-            birth_data["lat"],
-            birth_data["lng"]
-        )
+        chart = generate_natal_chart_kerykeion(birth_data)
         
         # Create profile and set as active
         create_and_activate_profile(session, user, birth_data, chart)

@@ -2,6 +2,8 @@ fastapi
 uvicorn
 python-telegram-bot
 pyswisseph
+kerykeion
+timezonefinder
 sqlalchemy
 openai
 python-dotenv
