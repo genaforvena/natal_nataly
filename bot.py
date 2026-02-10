@@ -1025,20 +1025,6 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         reading_record = save_reading(session, user.telegram_id, reading)
         reading_id = reading_record.id
         
-        # Track LLM prompt for reproducibility
-        from llm import MODEL, get_prompt
-        try:
-            # Use correct prompt name based on mode
-            if user.assistant_mode:
-                prompt_file = "assistant_personality.system"
-            else:
-                prompt_file = "astrologer_chat.system"
-            
-            prompt_content = get_prompt(prompt_file)
-            track_reading_prompt(reading_id, prompt_name, prompt_content, MODEL)
-        except Exception as e:
-            logger.warning(f"Failed to track reading prompt: {e}")
-        
         # Send reading to user
         response = await send_telegram_message(chat_id, reading)
         
@@ -1183,10 +1169,12 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         reading_id = reading_record.id
         
         # Track LLM prompt for reproducibility
-        from llm import MODEL, get_prompt
+        from llm import MODEL
+        from prompt_loader import load_response_prompt
         try:
-            prompt_content = get_prompt("transit_interpretation.system")
-            track_reading_prompt(reading_id, "transit_interpretation", prompt_content, MODEL)
+            # Load the response prompt used for transit interpretation
+            prompt_content = load_response_prompt("transit_reading")
+            track_reading_prompt(reading_id, "transit_reading", prompt_content, MODEL)
         except Exception as e:
             logger.warning(f"Failed to track reading prompt: {e}")
         
