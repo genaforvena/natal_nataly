@@ -163,8 +163,8 @@ def build_natal_chart_text_and_json(
         planets_data = []
         
         # Define the main planets in order
-        planet_names = ['sun', 'moon', 'mercury', 'venus', 'mars', 
-                       'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
+        planet_names = ['sun', 'moon', 'mercury', 'venus', 'mars',
+                        'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
         
         for planet_attr in planet_names:
             planet_obj = getattr(chart._model, planet_attr)

@@ -196,7 +196,7 @@ def log_pipeline_stage_4_chart_generated(
                 pipeline_log.natal_chart_id = natal_chart_id
                 pipeline_log.stage_completed = "chart_generated"
                 session.commit()
-                logger.info(f"[PIPELINE] CHART_GENERATED_OK")
+                logger.info("[PIPELINE] CHART_GENERATED_OK")
             else:
                 logger.warning(f"[PIPELINE] CHART_GENERATED - Pipeline log not found for session_id={session_id}")
         finally:
@@ -227,7 +227,7 @@ def log_pipeline_stage_5_reading_sent(
             if pipeline_log:
                 pipeline_log.stage_completed = "reading_sent"
                 session.commit()
-                logger.info(f"[PIPELINE] READING_SENT_OK")
+                logger.info("[PIPELINE] READING_SENT_OK")
             else:
                 logger.warning(f"[PIPELINE] READING_SENT - Pipeline log not found for session_id={session_id}")
         finally:

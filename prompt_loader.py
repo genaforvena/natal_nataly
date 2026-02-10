@@ -148,7 +148,7 @@ def load_response_prompt(name: str, include_metadata: bool = False) -> str:
         personality = _load_personality()
         
         if personality:
-            full_prompt = f"{personality}\n\n{'='*60}\n\n{content_without_header}"
+            full_prompt = f"{personality}\n\n{'=' * 60}\n\n{content_without_header}"
         else:
             full_prompt = content_without_header
         
