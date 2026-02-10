@@ -4,6 +4,14 @@ from fastapi import FastAPI, Request
 from bot import handle_telegram_update
 from db import init_db
 
+
+class HealthCheckFilter(logging.Filter):
+    """Filter out health check endpoint logs to reduce noise."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Filter out logs containing '/health' endpoint
+        return '/health' not in record.getMessage()
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -16,6 +24,9 @@ logging.basicConfig(
 # Set specific log levels for different modules
 logging.getLogger("httpx").setLevel(logging.WARNING)  # Reduce httpx noise
 logging.getLogger("httpcore").setLevel(logging.WARNING)  # Reduce httpcore noise
+
+# Add filter to uvicorn access logger to suppress health check logs
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
 logger = logging.getLogger(__name__)
 
