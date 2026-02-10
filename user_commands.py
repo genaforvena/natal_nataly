@@ -152,7 +152,10 @@ async def handle_my_chart_raw_command(telegram_id: str, send_message_func) -> bo
                 ).order_by(NatalChart.created_at.desc()).first()
                 
                 if not natal_chart:
-                    await send_message_func("У тебя пока нет натальной карты. Отправь данные рождения или используй /upload_chart.")
+                    await send_message_func(
+                        "У тебя пока нет натальной карты. "
+                        "Отправь данные рождения или используй /upload_chart."
+                    )
                     return True
                 
                 # Parse legacy chart JSON
@@ -268,7 +271,10 @@ async def handle_my_readings_command(telegram_id: str, send_message_func, readin
             ).order_by(Reading.created_at.desc()).all()
             
             if not readings:
-                await send_message_func("У тебя пока нет сохранённых readings. Сгенерируй натальную карту, чтобы получить первое reading.")
+                await send_message_func(
+                    "У тебя пока нет сохранённых readings. "
+                    "Сгенерируй натальную карту, чтобы получить первое reading."
+                )
                 return True
             
             # Build readings list

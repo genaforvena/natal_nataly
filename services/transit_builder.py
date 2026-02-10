@@ -99,7 +99,7 @@ def build_transits(
         tz_str = _timezone_finder.timezone_at(lat=birth_lat, lng=birth_lng)
         if not tz_str:
             tz_str = "UTC"
-            logger.warning(f"Could not determine timezone, using UTC")
+            logger.warning("Could not determine timezone, using UTC")
         
         logger.info(f"Using timezone: {tz_str} for transits")
         

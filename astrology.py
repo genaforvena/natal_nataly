@@ -31,7 +31,7 @@ logger.info(f"Swiss Ephemeris path set to: {EPHE_PATH}")
 try:
     SWISSEPH_VERSION = swe.version
     logger.info(f"Swiss Ephemeris version: {SWISSEPH_VERSION}")
-except:
+except Exception:
     SWISSEPH_VERSION = "unknown"
     logger.warning("Could not determine Swiss Ephemeris version")
 
@@ -134,7 +134,7 @@ def calculate_aspects(planet_positions: dict) -> list:
     planet_list = list(planet_positions.keys())
     
     for i, planet1 in enumerate(planet_list):
-        for planet2 in planet_list[i+1:]:
+        for planet2 in planet_list[i + 1:]:
             if planet1 == "Ascendant" or planet2 == "Ascendant":
                 continue  # Skip Ascendant for aspects
             
@@ -166,7 +166,7 @@ def calculate_aspects(planet_positions: dict) -> list:
 
 def datetime_to_julian(dob: str, time: str) -> float:
     """Convert date and time to Julian Day"""
-    logger.debug(f"Converting datetime to Julian")
+    logger.debug("Converting datetime to Julian")
     try:
         dt = datetime.strptime(f"{dob} {time}", "%Y-%m-%d %H:%M")
         jd = swe.julday(dt.year, dt.month, dt.day, 
@@ -178,14 +178,14 @@ def datetime_to_julian(dob: str, time: str) -> float:
         raise
 
 def generate_natal_chart(dob: str, time: str, lat: float, lng: float, original_input: str = None) -> dict:
-    '''
+    """
     Generate complete natal chart in standardized JSON format.
     
     Returns:
         dict: Standardized chart with planets, houses, aspects, and metadata
-    '''
+    """
     # Log only that we're generating, not the sensitive birth details
-    logger.info(f"Generating natal chart")
+    logger.info("Generating natal chart")
     try:
         # Convert to Julian Day
         jd = datetime_to_julian(dob, time)

@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+      - master
       - development
   pull_request:
     branches:
       - main
+      - master
       - development
 
 # Set default permissions to read-only for security
@@ -140,7 +142,7 @@ jobs:
           GROQ_API_KEY: test_key
       
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: unittests
@@ -148,7 +150,7 @@ jobs:
           fail_ci_if_error: false
       
       - name: Archive coverage report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: htmlcov/

@@ -308,7 +308,7 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
     Returns:
         String response from assistant
     """
-    logger.debug(f"generate_assistant_response called")
+    logger.debug("generate_assistant_response called")
     try:
         # Build context for prompt
         natal_chart = context.get("natal_chart")
@@ -349,7 +349,7 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
     Returns:
         String interpretation of transits
     """
-    logger.debug(f"interpret_transits called")
+    logger.debug("interpret_transits called")
     try:
         # Format natal chart for prompt
         chart_str = json.dumps(natal_chart_json, indent=2)
@@ -411,7 +411,10 @@ def extract_transit_date(text: str) -> dict:
         result = result.strip()
         
         date_data = json.loads(result)
-        logger.info(f"Transit date extracted successfully: date={date_data.get('date')}, time_specified={date_data.get('time_specified')}")
+        logger.info(
+            f"Transit date extracted successfully: date={date_data.get('date')}, "
+            f"time_specified={date_data.get('time_specified')}"
+        )
         
         return date_data
     except json.JSONDecodeError as e:
@@ -424,4 +427,3 @@ def extract_transit_date(text: str) -> dict:
         logger.exception(f"Error during transit date extraction: {e}")
         # Return null date to use current time
         return {"date": None, "time_specified": False}
-
