@@ -6,11 +6,17 @@ venv/
 *.sqlite
 .DS_Store
 data/
-test_integration.py
 charts/
 *.svg
 
-# Test files
-test_*.py
+# Testing and Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.hypothesis/
 .env.test
 test_*.sqlite
+
+# Note: test_*.py files in tests/ directory should be tracked
