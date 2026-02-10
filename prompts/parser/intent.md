@@ -67,3 +67,11 @@ Your task is to analyze user messages and classify their intent with high accura
 
 **Input:** "fgjhfgjh"
 **Output:** {"intent": "unknown", "confidence": 0.50}
+
+---
+
+Analyze the following user message and classify its intent:
+
+**User message:** {text}
+
+Return only the JSON object with intent and confidence.
