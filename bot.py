@@ -1339,12 +1339,6 @@ async def handle_telegram_update(update: dict):
         telegram_id = str(message["from"]["id"])
         text = message.get("text", "")
         
-        # Check if this is a group chat (negative chat_id)
-        # Personal astrology bot should only work in private chats
-        if chat_id < 0:
-            logger.warning(f"Ignoring message from group chat_id={chat_id}. Bot only works in private chats.")
-            return {"ok": True}
-        
         logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
         logger.debug(f"Message length: {len(text)} characters")
         
