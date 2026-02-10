@@ -97,12 +97,17 @@ def split_message(text: str, max_length: int = MAX_TELEGRAM_MESSAGE_LENGTH) -> l
     
     return chunks
 
-async def send_telegram_message(chat_id: int, text: str):
+async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "HTML"):
     """
     Send a message to Telegram using HTTP API.
     Automatically splits messages longer than 4096 characters.
+
+    Args:
+        chat_id: destination chat id
+        text: message text
+        parse_mode: Telegram parse mode (e.g. "HTML", "MarkdownV2"). If None, no parse_mode is sent.
     """
-    logger.debug(f"Sending message to chat_id={chat_id}, text_length={len(text)}")
+    logger.debug(f"Sending message to chat_id={chat_id}, text_length={len(text)}, parse_mode={parse_mode}")
     
     # Split message if it exceeds Telegram's limit
     message_chunks = split_message(text)
@@ -124,6 +129,8 @@ async def send_telegram_message(chat_id: int, text: str):
                     "chat_id": chat_id,
                     "text": chunk
                 }
+                if parse_mode:
+                    payload["parse_mode"] = parse_mode
                 
                 response = await client.post(
                     f"{TELEGRAM_API_URL}/sendMessage",
