@@ -109,7 +109,7 @@ class TestChartBuilder:
 
     def test_build_natal_chart_invalid_date(self):
         """Test chart generation with invalid date."""
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Failed to generate natal chart"):
             build_natal_chart_text_and_json(
                 name="Test User",
                 year=1990,

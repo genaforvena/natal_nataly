@@ -8,7 +8,14 @@ from services.chart_builder import build_natal_chart_text_and_json
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
 from db import SessionLocal
 from models import User, BirthData, Reading, AstroProfile, UserNatalChart
-from models import STATE_AWAITING_BIRTH_DATA, STATE_AWAITING_CLARIFICATION, STATE_AWAITING_CONFIRMATION, STATE_AWAITING_EDIT_CONFIRMATION, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART
+from models import (
+    STATE_AWAITING_BIRTH_DATA,
+    STATE_AWAITING_CLARIFICATION,
+    STATE_AWAITING_CONFIRMATION,
+    STATE_AWAITING_EDIT_CONFIRMATION,
+    STATE_HAS_CHART,
+    STATE_CHATTING_ABOUT_CHART
+)
 from debug import (
     DEBUG_MODE, 
     log_pipeline_stage_1_raw_input,
@@ -36,14 +43,14 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_BOT_TOKEN environment variable is not set!")
 else:
-    logger.info(f"Bot initialized with Telegram token configured")
+    logger.info("Bot initialized with Telegram token configured")
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 # Telegram message length limit (4096 characters)
 MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 
-logger.info(f"Telegram API URL configured")
+logger.info("Telegram API URL configured")
 
 def split_message(text: str, max_length: int = MAX_TELEGRAM_MESSAGE_LENGTH) -> list[str]:
     """
@@ -138,28 +145,44 @@ async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "HTML
                 )
                 # Check if the request was successful (2xx status codes)
                 if response.is_success:
-                    logger.info(f"Message chunk {i}/{len(message_chunks)} sent successfully to chat_id={chat_id}, status={response.status_code}")
+                    logger.info(
+                        f"Message chunk {i}/{len(message_chunks)} sent successfully "
+                        f"to chat_id={chat_id}, status={response.status_code}"
+                    )
                     last_response = response
                 elif response.status_code in [400, 404]:
                     # 400 or 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
                     # This is not a critical error - log it and return None without raising
-                    logger.warning(f"Cannot send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}: Chat not found (status={response.status_code}). User may have blocked the bot or chat_id is invalid.")
+                    logger.warning(
+                        f"Cannot send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}: "
+                        f"Chat not found (status={response.status_code}). "
+                        f"User may have blocked the bot or chat_id is invalid."
+                    )
                     logger.debug(f"{response.status_code} Response details: {response.text}")
                     # If this is the first chunk, return None immediately
                     # If later chunks fail, at least some message was delivered
                     if i == 1:
                         return None
                     else:
-                        logger.warning(f"Partial message delivered ({i-1}/{len(message_chunks)} chunks) before {response.status_code} error")
+                        logger.warning(
+                            f"Partial message delivered ({i - 1}/{len(message_chunks)} chunks) "
+                            f"before {response.status_code} error"
+                        )
                         return last_response
                 else:
-                    logger.error(f"Failed to send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}, status={response.status_code}, response={response.text}")
+                    logger.error(
+                        f"Failed to send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}, "
+                        f"status={response.status_code}, response={response.text}"
+                    )
                     # If this is the first chunk, raise exception
                     # If later chunks fail, log but don't raise (partial delivery is better than nothing)
                     if i == 1:
                         raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
                     else:
-                        logger.error(f"Failed to send remaining chunks. Partial message delivered ({i-1}/{len(message_chunks)} chunks)")
+                        logger.error(
+                            f"Failed to send remaining chunks. "
+                            f"Partial message delivered ({i - 1}/{len(message_chunks)} chunks)"
+                        )
                         return last_response
         
         return last_response
@@ -415,8 +438,8 @@ def get_active_profile(session, user: User):
         raise
 
 
-def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dict, 
-                  profile_name: str = None, profile_type: str = "self") -> AstroProfile:
+def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dict,
+                   profile_name: str = None, profile_type: str = "self") -> AstroProfile:
     """
     Create a new AstroProfile.
     
@@ -468,11 +491,11 @@ def set_active_profile(session, user: User, profile_id: int):
         
         if not profile:
             logger.error(f"Profile {profile_id} not found or doesn't belong to user {user.telegram_id}")
-            raise ValueError(f"Profile not found")
+            raise ValueError("Profile not found")
         
         user.active_profile_id = profile_id
         session.commit()
-        logger.info(f"Active profile set successfully")
+        logger.info("Active profile set successfully")
     except Exception as e:
         logger.exception(f"Error setting active profile: {e}")
         raise
@@ -532,7 +555,7 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
             # Fallback to profile chart (legacy)
             context["natal_chart"] = json.loads(profile.natal_chart_json)
             context["chart_source"] = "profile_legacy"
-            logger.debug(f"Using chart from AstroProfile (legacy)")
+            logger.debug("Using chart from AstroProfile (legacy)")
         
         if profile:
             context["profile_name"] = profile.name or "Self"
@@ -866,7 +889,7 @@ async def handle_awaiting_chart_upload(session, user: User, chat_id: int, text: 
         aspects_count = len(chart.get("aspects", []))
         
         success_msg = "✅ **Chart uploaded successfully!**\n\n"
-        success_msg += f"📊 **Chart Summary:**\n"
+        success_msg += "📊 **Chart Summary:**\n"
         success_msg += f"• Planets: {planets_count}\n"
         success_msg += f"• Houses: {houses_count}\n"
         success_msg += f"• Aspects: {aspects_count}\n\n"
@@ -1023,7 +1046,8 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
                     logger.error(f"User {user.telegram_id} in chatting state but no chart found")
                     await send_telegram_message(
                         chat_id,
-                        "Кажется, у меня нет твоей натальной карты. Пожалуйста, предоставь данные рождения снова или используй /upload_chart."
+                        "Кажется, у меня нет твоей натальной карты. Пожалуйста, "
+                        "предоставь данные рождения снова или используй /upload_chart."
                     )
                     update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
                     return
@@ -1046,11 +1070,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Get assistant response using new assistant mode
         prompt_name = "assistant_response"
         if user.assistant_mode:
-            logger.info(f"Using assistant mode for response")
+            logger.info("Using assistant mode for response")
             reading = generate_assistant_response(context, text)
         else:
             # Fallback to legacy interpret_chart
-            logger.info(f"Using legacy chart interpretation")
+            logger.info("Using legacy chart interpretation")
             reading = interpret_chart(chart, question=text)
             prompt_name = "astrologer_chat"
         
@@ -1092,7 +1116,11 @@ async def handle_profiles_command(session, user: User, chat_id: int):
         profiles = list_user_profiles(session, user.telegram_id)
         
         if not profiles:
-            await send_telegram_message(chat_id, "У тебя пока нет ни одного профиля. Отправь данные рождения, чтобы создать первый профиль.")
+            await send_telegram_message(
+                chat_id,
+                "У тебя пока нет ни одного профиля. "
+                "Отправь данные рождения, чтобы создать первый профиль."
+            )
             return
         
         # Build profiles list message
@@ -1181,7 +1209,7 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         chart = None
         if user_chart:
             chart = json.loads(user_chart.chart_json)
-            logger.info(f"Using chart from UserNatalChart for transits")
+            logger.info("Using chart from UserNatalChart for transits")
         else:
             # Fallback to profile chart
             profile = get_active_profile(session, user)
@@ -1211,7 +1239,7 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         transits = build_transits(chart, transit_date)
         transits_text = format_transits_for_llm(transits)
         
-        logger.info(f"Transits calculated successfully")
+        logger.info("Transits calculated successfully")
         
         # Get LLM interpretation
         from llm import interpret_transits
@@ -1296,7 +1324,7 @@ async def route_message(session, user: User, chat_id: int, text: str):
                 
             else:
                 # Default to chatting about chart
-                logger.warning(f"Unknown intent type, defaulting to chart chat")
+                logger.warning("Unknown intent type, defaulting to chart chat")
                 await handle_chatting_about_chart(session, user, chat_id, text)
                 
         except Exception as e:
@@ -1314,7 +1342,7 @@ async def handle_telegram_update(update: dict):
     Entry point for Telegram webhook updates.
     Routes messages based on user state.
     """
-    logger.info(f"=== Processing Telegram update ===")
+    logger.info("=== Processing Telegram update ===")
     update_type = "message" if "message" in update else "other"
     logger.debug(f"Update type: {update_type}")
     
@@ -1328,11 +1356,11 @@ async def handle_telegram_update(update: dict):
         
         # Validate message structure
         if "chat" not in message or "id" not in message["chat"]:
-            logger.error(f"Invalid message structure: missing chat.id")
+            logger.error("Invalid message structure: missing chat.id")
             return {"ok": True}
         
         if "from" not in message or "id" not in message["from"]:
-            logger.error(f"Invalid message structure: missing from.id")
+            logger.error("Invalid message structure: missing from.id")
             return {"ok": True}
         
         chat_id = message["chat"]["id"]

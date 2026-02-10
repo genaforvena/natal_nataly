@@ -81,8 +81,14 @@ async def handle_debug_birth(telegram_id: str, send_message_func):
                 return
             
             # Parse JSON data
-            parsed_data = json.loads(pipeline_log.parsed_birth_data_json) if pipeline_log.parsed_birth_data_json else None
-            normalized_data = json.loads(pipeline_log.normalized_birth_data_json) if pipeline_log.normalized_birth_data_json else None
+            parsed_data = (
+                json.loads(pipeline_log.parsed_birth_data_json)
+                if pipeline_log.parsed_birth_data_json else None
+            )
+            normalized_data = (
+                json.loads(pipeline_log.normalized_birth_data_json)
+                if pipeline_log.normalized_birth_data_json else None
+            )
             
             # Build response
             response = "🔍 **DEBUG: Birth Data**\n\n"
@@ -250,12 +256,12 @@ async def handle_debug_pipeline(telegram_id: str, send_message_func):
                 
                 # Stage 4: Chart Generated
                 if debug_session.natal_chart_id:
-                    response += f"4️⃣ **Chart Generated** ✅\n"
+                    response += "4️⃣ **Chart Generated** ✅\n"
                     response += f"   🆔 Chart ID: {debug_session.natal_chart_id}\n\n"
                 
                 # Stage 5: Reading Sent
                 if debug_session.reading_id:
-                    response += f"5️⃣ **Reading Sent** ✅\n"
+                    response += "5️⃣ **Reading Sent** ✅\n"
                     response += f"   🆔 Reading ID: {debug_session.reading_id}\n\n"
                     
                     # Get reading details

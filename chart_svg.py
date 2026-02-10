@@ -54,7 +54,10 @@ def generate_chart_svg(natal_chart: Dict[str, Any], width: int = 600, height: in
         
         # Inner circle
         inner_radius = radius * 0.7
-        svg_parts.append(f'<circle cx="{center_x}" cy="{center_y}" r="{inner_radius}" fill="none" stroke="#4a4a6a" stroke-width="1"/>')
+        svg_parts.append(
+            f'<circle cx="{center_x}" cy="{center_y}" r="{inner_radius}" '
+            f'fill="none" stroke="#4a4a6a" stroke-width="1"/>'
+        )
         
         # Zodiac wheel (12 segments)
         for i in range(12):
