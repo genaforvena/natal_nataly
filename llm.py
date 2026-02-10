@@ -278,3 +278,108 @@ Provide a concise, insightful response based on the natal chart."""
     except Exception as e:
         logger.exception(f"Error generating assistant response: {e}")
         raise
+
+
+def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str) -> str:
+    """
+    Interpret transits in the context of the natal chart.
+    
+    Args:
+        natal_chart_json: User's natal chart data
+        transits_text: Formatted transit data (from format_transits_for_llm)
+        user_question: User's original question
+        
+    Returns:
+        String interpretation of transits
+    """
+    logger.debug(f"interpret_transits called")
+    try:
+        system_prompt = get_prompt("transit_interpretation.system")
+        
+        # Format natal chart for prompt
+        chart_str = json.dumps(natal_chart_json, indent=2)
+        natal_chart_section = f"=== NATAL CHART ===\n{chart_str}"
+        
+        # Build user prompt
+        user_prompt = get_prompt("transit_interpretation.user").format(
+            natal_chart=natal_chart_section,
+            transits=transits_text,
+            question=user_question
+        )
+        
+        logger.info(f"Making LLM API call for transit interpretation with model: {MODEL}")
+        
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content
+        logger.info(f"Transit interpretation generated, length: {len(result)} characters")
+        
+        return result.strip()
+    except Exception as e:
+        logger.exception(f"Error interpreting transits: {e}")
+        raise
+
+
+def extract_transit_date(text: str) -> dict:
+    """
+    Use LLM to extract target date for transit calculations from natural language text.
+    
+    Args:
+        text: User's message text
+        
+    Returns:
+        dict with keys: date (YYYY-MM-DD or null or relative like "tomorrow"), time_specified (bool)
+    """
+    logger.debug(f"extract_transit_date called with message length: {len(text)}")
+    result = None  # Initialize to avoid UnboundLocalError
+    try:
+        system_prompt = get_prompt("transit_date_extractor.system")
+        user_prompt = get_prompt("transit_date_extractor.user").format(text=text)
+        
+        logger.info(f"Making LLM API call for transit date extraction with model: {MODEL}")
+        
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1  # Low temperature for consistent extraction
+        )
+        
+        result = response.choices[0].message.content
+        logger.debug(f"LLM response: {result}")
+        
+        # Parse JSON response
+        # Clean up response - sometimes LLM might add markdown code blocks
+        result = result.strip()
+        if result.startswith("```json"):
+            result = result[7:]  # Remove ```json
+        if result.startswith("```"):
+            result = result[3:]  # Remove ```
+        if result.endswith("```"):
+            result = result[:-3]  # Remove ```
+        result = result.strip()
+        
+        date_data = json.loads(result)
+        logger.info(f"Transit date extracted successfully: date={date_data.get('date')}, time_specified={date_data.get('time_specified')}")
+        
+        return date_data
+    except json.JSONDecodeError as e:
+        logger.exception(f"Failed to parse JSON from LLM response: {e}")
+        if result:
+            logger.error(f"Raw response: {result}")
+        # Return null date to use current time
+        return {"date": None, "time_specified": False}
+    except Exception as e:
+        logger.exception(f"Error during transit date extraction: {e}")
+        # Return null date to use current time
+        return {"date": None, "time_specified": False}
+
