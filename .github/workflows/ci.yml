@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+      - master
       - development
   pull_request:
     branches:
       - main
+      - master
       - development
 
 # Set default permissions to read-only for security
