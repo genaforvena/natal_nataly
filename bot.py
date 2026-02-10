@@ -996,7 +996,6 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
                 logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
         except Exception as send_error:
             logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
-            # Silently continue - don't raise cascading errors
 
 
 async def handle_chatting_about_chart(session, user: User, chat_id: int, text: str):
@@ -1339,6 +1338,12 @@ async def handle_telegram_update(update: dict):
         chat_id = message["chat"]["id"]
         telegram_id = str(message["from"]["id"])
         text = message.get("text", "")
+        
+        # Check if this is a group chat (negative chat_id)
+        # Personal astrology bot should only work in private chats
+        if chat_id < 0:
+            logger.warning(f"Ignoring message from group chat_id={chat_id}. Bot only works in private chats.")
+            return {"ok": True}
         
         logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
         logger.debug(f"Message length: {len(text)} characters")
