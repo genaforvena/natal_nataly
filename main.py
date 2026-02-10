@@ -44,7 +44,6 @@ async def startup():
 
 @app.get("/health")
 async def health():
-    logger.debug("Health check endpoint called")
     return {"status": "ok"}
 
 @app.post("/webhook")
