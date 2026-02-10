@@ -12,10 +12,10 @@ Your task is to parse natural language messages and extract the target date for 
 
 ## OUTPUT FORMAT (strict JSON)
 ```json
-{
+{{
   "date": "YYYY-MM-DD" or null,
   "time_specified": true/false
-}
+}}
 ```
 
 If time_specified is false, the system will default to 12:00 UTC (noon).
@@ -24,28 +24,28 @@ If date is null, the system will use current UTC date/time.
 ## EXAMPLES
 
 **Input:** "что происходит сейчас?"
-**Output:** {"date": null, "time_specified": false}
+**Output:** {{"date": null, "time_specified": false}}
 
 **Input:** "what's happening in march 2026?"
-**Output:** {"date": "2026-03-01", "time_specified": false}
+**Output:** {{"date": "2026-03-01", "time_specified": false}}
 
 **Input:** "как выглядит 2026-03-15?"
-**Output:** {"date": "2026-03-15", "time_specified": false}
+**Output:** {{"date": "2026-03-15", "time_specified": false}}
 
 **Input:** "15.03.2026"
-**Output:** {"date": "2026-03-15", "time_specified": false}
+**Output:** {{"date": "2026-03-15", "time_specified": false}}
 
 **Input:** "что будет завтра?"
-**Output:** {"date": "tomorrow", "time_specified": false}
+**Output:** {{"date": "tomorrow", "time_specified": false}}
 
 **Input:** "март 2026"
-**Output:** {"date": "2026-03-01", "time_specified": false}
+**Output:** {{"date": "2026-03-01", "time_specified": false}}
 
 **Input:** "next month"
-**Output:** {"date": "next_month", "time_specified": false}
+**Output:** {{"date": "next_month", "time_specified": false}}
 
 **Input:** "what does saturn do now?"
-**Output:** {"date": null, "time_specified": false}
+**Output:** {{"date": null, "time_specified": false}}
 
 **Note:** For relative dates like "tomorrow" or "next_month", return the literal string so the system can calculate the actual date.
 
