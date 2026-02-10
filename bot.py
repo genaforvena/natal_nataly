@@ -1038,7 +1038,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         logger.exception(f"Error handling chatting_about_chart: {e}")
         await send_telegram_message(
             chat_id,
-            "Произошла ошибка при обработке вопроса. Пожалуйста, попробуйте ещё раз."
+            "Ниче не поняла! Спроси еще раз по-другому."
         )
 
 
