@@ -6,17 +6,30 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Use environment variable for database path, default to local
-DB_PATH = os.getenv("DB_PATH", "natal_nataly.sqlite")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+# Database URL configuration
+# If DATABASE_URL exists → use it (PostgreSQL or other)
+# If missing → check DB_PATH for legacy SQLite path, or use default
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    DB_PATH = os.getenv("DB_PATH", "natal_nataly.sqlite")
+    DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-logger.info(f"Configuring database with URL: {DATABASE_URL}")
-engine = create_engine(DATABASE_URL, echo=False)
+# Determine database backend for logging
+db_backend = "postgresql" if "postgresql" in DATABASE_URL else "sqlite"
+logger.info(f"Database backend: {db_backend}")
+logger.info(f"Configuring database with URL: {DATABASE_URL.split('@')[0] if '@' in DATABASE_URL else DATABASE_URL}")
+
+# For PostgreSQL, use psycopg2; for SQLite, use default driver
+engine = create_engine(
+    DATABASE_URL, 
+    echo=False,
+    pool_pre_ping=True,  # Verify connections before using them
+)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
 def init_db():
     logger.info("Initializing database schema")
-    from models import User, BirthData, Reading, AstroProfile, PipelineLog, NatalChart, DebugSession
+    from models import User, BirthData, Reading, AstroProfile, PipelineLog, NatalChart, DebugSession, UserNatalChart
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized successfully")
