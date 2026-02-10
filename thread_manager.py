@@ -35,23 +35,28 @@ def add_message_to_thread(session: Session, telegram_id: str, role: str, content
     Returns:
         Created ConversationMessage object
     """
-    logger.debug(f"Adding message to thread: telegram_id={telegram_id}, role={role}, content_length={len(content)}")
+    logger.debug(
+        "Adding message to thread: telegram_id=%s, role=%s, content_length=%d",
+        telegram_id,
+        role,
+        len(content)
+    )
     
     try:
-        # Check if this is part of the first pair
-        existing_messages = session.query(ConversationMessage)\
-            .filter_by(telegram_id=telegram_id)\
-            .order_by(ConversationMessage.created_at)\
-            .all()
-        
+        # Check if this is part of the first pair without loading all messages
+        base_query = session.query(ConversationMessage).filter_by(telegram_id=telegram_id)
+        message_count = base_query.count()
+
         # Determine if this message is part of the first pair
         is_first_pair = False
-        if len(existing_messages) == 0 and role == "user":
+        if message_count == 0 and role == "user":
             # First user message
             is_first_pair = True
-        elif len(existing_messages) == 1 and existing_messages[0].role == "user" and role == "assistant":
+        elif message_count == 1 and role == "assistant":
             # First assistant response (after first user message)
-            is_first_pair = True
+            first_message = base_query.order_by(ConversationMessage.created_at).first()
+            if first_message and first_message.role == "user":
+                is_first_pair = True
         
         # Create new message
         new_message = ConversationMessage(
@@ -63,17 +68,20 @@ def add_message_to_thread(session: Session, telegram_id: str, role: str, content
         )
         
         session.add(new_message)
-        session.commit()
+        session.flush()  # Flush to get the ID without committing
         
-        logger.info(f"Message added to thread: id={new_message.id}, is_first_pair={is_first_pair}")
+        logger.info("Message added to thread: id=%s, is_first_pair=%s", new_message.id, is_first_pair)
         
-        # Trim thread if needed
+        # Trim thread if needed (in same transaction)
         trim_thread_if_needed(session, telegram_id)
+        
+        # Commit both the insert and any trimming together
+        session.commit()
         
         return new_message
         
     except Exception as e:
-        logger.exception(f"Error adding message to thread for {telegram_id}: {e}")
+        logger.exception("Error adding message to thread for %s: %s", telegram_id, e)
         session.rollback()
         raise
 
@@ -123,8 +131,12 @@ def trim_thread_if_needed(session: Session, telegram_id: str):
     Args:
         session: Database session
         telegram_id: User's Telegram ID
+        
+    Raises:
+        ValueError: If thread cannot be trimmed to MAX_THREAD_LENGTH due to
+                    too many fixed messages
     """
-    logger.debug(f"Checking if thread needs trimming for telegram_id={telegram_id}")
+    logger.debug("Checking if thread needs trimming for telegram_id=%s", telegram_id)
     
     try:
         # Get all messages ordered by creation time
@@ -136,28 +148,72 @@ def trim_thread_if_needed(session: Session, telegram_id: str):
         message_count = len(messages)
         
         if message_count <= MAX_THREAD_LENGTH:
-            logger.debug(f"Thread size OK: {message_count}/{MAX_THREAD_LENGTH}")
+            logger.debug("Thread size OK: %d/%d", message_count, MAX_THREAD_LENGTH)
             return
         
-        # Calculate how many messages to delete
+        # Calculate how many messages to delete to reach MAX_THREAD_LENGTH
         messages_to_delete = message_count - MAX_THREAD_LENGTH
         
-        logger.info(f"Thread exceeds limit: {message_count}/{MAX_THREAD_LENGTH}. Deleting {messages_to_delete} messages")
+        logger.info(
+            "Thread exceeds limit: %d/%d. Requesting deletion of %d messages",
+            message_count,
+            MAX_THREAD_LENGTH,
+            messages_to_delete
+        )
         
         # Separate non-fixed messages
         non_fixed_messages = [msg for msg in messages if not msg.is_first_pair]
+        deletable_count = len(non_fixed_messages)
+        
+        # Determine how many messages we can actually delete
+        actual_delete_count = min(deletable_count, messages_to_delete)
         
         # Delete oldest non-fixed messages (FIFO)
-        for msg in non_fixed_messages[:messages_to_delete]:
-            logger.debug(f"Deleting message: id={msg.id}, role={msg.role}, created_at={msg.created_at}")
+        for msg in non_fixed_messages[:actual_delete_count]:
+            logger.debug(
+                "Deleting message: id=%s, role=%s, created_at=%s",
+                msg.id,
+                msg.role,
+                msg.created_at
+            )
             session.delete(msg)
         
-        session.commit()
+        # Compute remaining messages after attempted deletion
+        remaining_count = message_count - actual_delete_count
         
-        logger.info(f"Thread trimmed successfully. Deleted {messages_to_delete} messages")
+        if remaining_count > MAX_THREAD_LENGTH:
+            # Not enough deletable messages to enforce the limit
+            logger.error(
+                "Unable to enforce MAX_THREAD_LENGTH for telegram_id=%s. "
+                "message_count=%d, deletable=%d, attempted_delete=%d, "
+                "remaining=%d, max=%d",
+                telegram_id,
+                message_count,
+                deletable_count,
+                actual_delete_count,
+                remaining_count,
+                MAX_THREAD_LENGTH,
+            )
+            session.rollback()
+            raise ValueError(
+                "Inconsistent conversation data: not enough non-fixed messages "
+                "to trim thread to MAX_THREAD_LENGTH"
+            )
         
+        # Note: Don't commit here, let caller commit in same transaction
+        
+        logger.info(
+            "Thread trimmed successfully. Deleted %d messages; remaining %d/%d",
+            actual_delete_count,
+            remaining_count,
+            MAX_THREAD_LENGTH
+        )
+        
+    except ValueError:
+        # Re-raise ValueError as-is
+        raise
     except Exception as e:
-        logger.exception(f"Error trimming thread for {telegram_id}: {e}")
+        logger.exception("Error trimming thread for %s: %s", telegram_id, e)
         session.rollback()
         raise
 

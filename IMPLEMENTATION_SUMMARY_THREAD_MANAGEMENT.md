@@ -168,5 +168,5 @@ The feature is production-ready. To deploy:
 ## Support
 
 - See `CONVERSATION_THREAD_GUIDE.md` for detailed documentation
-- Run `python test_thread_manager.py` for verification
+- Run `pytest tests/test_thread_manager.py` for verification
 - Run `python demo_thread_management.py` for demonstration

@@ -1066,18 +1066,14 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         if user.state == STATE_HAS_CHART:
             update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
         
-        # Add user message to conversation thread
-        add_message_to_thread(session, user.telegram_id, "user", text)
-        
-        # Get conversation history for context
+        # Get conversation history BEFORE adding current message to avoid duplication
         conversation_history = get_conversation_thread(session, user.telegram_id)
-        logger.debug(f"Retrieved conversation history: {len(conversation_history)} messages")
+        logger.debug("Retrieved conversation history: %d messages", len(conversation_history))
         
         # Build context for assistant
         profile = get_active_profile(session, user)
         context = build_agent_context(session, user, profile)
         
-        # Get assistant response using new assistant mode
         # Get assistant response using new assistant mode
         prompt_name = "assistant_response"
         if user.assistant_mode:
@@ -1089,7 +1085,8 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
             reading = interpret_chart(chart, question=text, conversation_history=conversation_history)
             prompt_name = "astrologer_chat"
         
-        # Add assistant response to conversation thread
+        # Add user message and assistant response to conversation thread after generation
+        add_message_to_thread(session, user.telegram_id, "user", text)
         add_message_to_thread(session, user.telegram_id, "assistant", reading)
         
         # Save reading to database

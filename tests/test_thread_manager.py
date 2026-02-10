@@ -4,22 +4,15 @@ Unit tests for conversation thread management.
 Tests the FIFO logic, thread trimming, and reset functionality.
 """
 
-import sys
-import os
 import pytest
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db import SessionLocal, init_db
 from thread_manager import (
     add_message_to_thread,
     get_conversation_thread,
-    trim_thread_if_needed,
     reset_thread,
     get_thread_summary,
     MAX_THREAD_LENGTH,
-    FIXED_PAIR_COUNT
 )
 
 
@@ -41,6 +34,7 @@ def cleanup_test_users(db_session):
     yield
 
 
+@pytest.mark.unit
 def test_basic_thread_operations(db_session):
     """Test basic thread operations"""
     test_user_id = "test_user_basic"
@@ -69,6 +63,7 @@ def test_basic_thread_operations(db_session):
     assert summary['assistant_messages'] == 1
 
 
+@pytest.mark.unit
 def test_fifo_trimming(db_session):
     """Test FIFO trimming when thread exceeds max length"""
     test_user_id = "test_user_fifo"
@@ -101,6 +96,7 @@ def test_fifo_trimming(db_session):
     assert "Message 12" in contents, "Message 12 should be in thread"
 
 
+@pytest.mark.unit
 def test_reset_thread(db_session):
     """Test thread reset functionality"""
     test_user_id = "test_user_reset"
@@ -122,6 +118,7 @@ def test_reset_thread(db_session):
     assert len(thread) == 0, f"Expected empty thread, got {len(thread)} messages"
 
 
+@pytest.mark.unit
 def test_conversation_history_format(db_session):
     """Test that conversation history is in correct format for LLM"""
     test_user_id = "test_user_format"
@@ -142,6 +139,7 @@ def test_conversation_history_format(db_session):
         assert msg['role'] in ['user', 'assistant'], f"Invalid role: {msg['role']}"
 
 
+@pytest.mark.unit
 def test_thread_summary_with_empty_thread(db_session):
     """Test thread summary with no messages"""
     test_user_id = "test_user_empty"
@@ -156,6 +154,7 @@ def test_thread_summary_with_empty_thread(db_session):
     assert summary['newest_message'] is None
 
 
+@pytest.mark.unit
 def test_multiple_users_isolation(db_session):
     """Test that threads are isolated per user"""
     user1 = "test_user_isolation_1"

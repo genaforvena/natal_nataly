@@ -150,19 +150,19 @@ Bot: "Your moon is in Cancer..."
 
 Two test suites are included:
 
-### Unit Tests (`test_thread_manager.py`)
+### Unit Tests (`tests/test_thread_manager.py`)
 - Basic thread operations
 - FIFO trimming logic
 - Thread reset functionality
 - Conversation history format validation
 
-Run with: `python test_thread_manager.py`
+Run with: `pytest tests/test_thread_manager.py`
 
-### Integration Tests (`test_integration_thread.py`)
+### Integration Tests (pytest suite under `tests/`)
 - Realistic conversation flow
 - Thread format compatibility with LLM API
 
-Run with: `python test_integration_thread.py`
+Run with: `pytest tests/`
 
 ## Configuration
 
