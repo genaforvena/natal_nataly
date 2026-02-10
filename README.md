@@ -297,6 +297,7 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 ## Documentation
 
 - See [TESTING.md](TESTING.md) for CI/CD pipeline and testing guide
+- See [BRANCH_PROTECTION_SETUP.md](BRANCH_PROTECTION_SETUP.md) for enabling required CI/CD checks on PRs
 - See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
 - See [SETUP.md](SETUP.md) for detailed manual setup instructions
 - See [TEST_PAYLOADS.md](TEST_PAYLOADS.md) for testing examples

@@ -4,6 +4,22 @@
 
 This document summarizes the comprehensive CI/CD pipeline implementation for the natal_nataly bot. The implementation provides automated testing, linting, type checking, and security scanning to ensure code quality before merging changes.
 
+## Enabling Required Checks for PRs
+
+**To make CI/CD checks mandatory for all pull requests**, follow the [Branch Protection Setup Guide](BRANCH_PROTECTION_SETUP.md). This guide provides step-by-step instructions for repository administrators to enable branch protection rules that require all CI checks to pass before merging.
+
+### Quick Reference: Required Status Checks
+
+When configuring branch protection, select these status checks as required:
+- ✅ `lint` - Code must pass flake8 linting
+- ✅ `test` - All tests must pass
+- ✅ `docker-build` - Docker image must build successfully
+- ✅ `all-checks` - Aggregated check (recommended)
+
+Optional (advisory only, won't block merging):
+- ⚠️ `type-check` - Type checking (mypy)
+- ⚠️ `security-scan` - Dependency vulnerability scan
+
 ## What Was Implemented
 
 ### 1. Test Infrastructure (38 Tests)
