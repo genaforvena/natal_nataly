@@ -39,36 +39,104 @@ else:
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+# Telegram message length limit (4096 characters)
+MAX_TELEGRAM_MESSAGE_LENGTH = 4096
+
 logger.info(f"Telegram API URL configured")
 
+def split_message(text: str, max_length: int = MAX_TELEGRAM_MESSAGE_LENGTH) -> list[str]:
+    """
+    Split a long message into chunks that fit within Telegram's message limit.
+    Tries to split at paragraph boundaries, then sentence boundaries, then word boundaries.
+    
+    Args:
+        text: The message text to split
+        max_length: Maximum length per message chunk (default: 4096)
+        
+    Returns:
+        List of message chunks
+    """
+    if len(text) <= max_length:
+        return [text]
+    
+    chunks = []
+    remaining = text
+    
+    while remaining:
+        if len(remaining) <= max_length:
+            chunks.append(remaining)
+            break
+            
+        # Try to find a good split point
+        split_point = max_length
+        
+        # Look for paragraph break (double newline)
+        chunk = remaining[:max_length]
+        last_double_newline = chunk.rfind('\n\n')
+        if last_double_newline > max_length * 0.5:  # Only if in the latter half
+            split_point = last_double_newline + 2
+        else:
+            # Look for single newline
+            last_newline = chunk.rfind('\n')
+            if last_newline > max_length * 0.5:
+                split_point = last_newline + 1
+            else:
+                # Look for sentence end
+                last_period = max(chunk.rfind('. '), chunk.rfind('! '), chunk.rfind('? '))
+                if last_period > max_length * 0.5:
+                    split_point = last_period + 2
+                else:
+                    # Look for word boundary
+                    last_space = chunk.rfind(' ')
+                    if last_space > max_length * 0.5:
+                        split_point = last_space + 1
+        
+        chunks.append(remaining[:split_point].rstrip())
+        remaining = remaining[split_point:].lstrip()
+    
+    return chunks
+
 async def send_telegram_message(chat_id: int, text: str):
-    """Send a message to Telegram using HTTP API"""
+    """
+    Send a message to Telegram using HTTP API.
+    Automatically splits messages longer than 4096 characters.
+    """
     logger.debug(f"Sending message to chat_id={chat_id}, text_length={len(text)}")
     
+    # Split message if it exceeds Telegram's limit
+    message_chunks = split_message(text)
+    
+    if len(message_chunks) > 1:
+        logger.info(f"Message split into {len(message_chunks)} chunks")
+    
     try:
+        last_response = None
         async with httpx.AsyncClient() as client:
-            payload = {
-                "chat_id": chat_id,
-                "text": text
-            }
-            
-            response = await client.post(
-                f"{TELEGRAM_API_URL}/sendMessage",
-                json=payload
-            )
-            # Check if the request was successful (2xx status codes)
-            if response.is_success:
-                logger.info(f"Message sent successfully to chat_id={chat_id}, status={response.status_code}")
-                return response
-            elif response.status_code == 404:
-                # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
-                # This is not a critical error - log it and return None without raising
-                logger.warning(f"Cannot send message to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
-                logger.debug(f"404 Response details: {response.text}")
-                return None
-            else:
-                logger.error(f"Failed to send message to chat_id={chat_id}, status={response.status_code}, response={response.text}")
-                raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
+            for i, chunk in enumerate(message_chunks, 1):
+                payload = {
+                    "chat_id": chat_id,
+                    "text": chunk
+                }
+                
+                response = await client.post(
+                    f"{TELEGRAM_API_URL}/sendMessage",
+                    json=payload
+                )
+                # Check if the request was successful (2xx status codes)
+                if response.is_success:
+                    logger.info(f"Message chunk {i}/{len(message_chunks)} sent successfully to chat_id={chat_id}, status={response.status_code}")
+                    last_response = response
+                elif response.status_code == 404:
+                    # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
+                    # This is not a critical error - log it and return None without raising
+                    logger.warning(f"Cannot send message to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
+                    logger.debug(f"404 Response details: {response.text}")
+                    return None
+                else:
+                    logger.error(f"Failed to send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}, status={response.status_code}, response={response.text}")
+                    raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
+        
+        return last_response
     except Exception as e:
         logger.exception(f"Error sending Telegram message to chat_id={chat_id}: {e}")
         raise
