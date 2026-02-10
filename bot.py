@@ -2,6 +2,7 @@ import os
 import json
 import httpx
 import logging
+import asyncio
 from datetime import datetime, timezone
 from services.chart_builder import build_natal_chart_text_and_json
 from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
@@ -83,12 +84,12 @@ def split_message(text: str, max_length: int = MAX_TELEGRAM_MESSAGE_LENGTH) -> l
             else:
                 # Look for sentence end
                 last_period = max(chunk.rfind('. '), chunk.rfind('! '), chunk.rfind('? '))
-                if last_period > max_length * 0.5:
+                if last_period >= 0 and last_period > max_length * 0.5:
                     split_point = last_period + 2
                 else:
                     # Look for word boundary
                     last_space = chunk.rfind(' ')
-                    if last_space > max_length * 0.5:
+                    if last_space >= 0 and last_space > max_length * 0.5:
                         split_point = last_space + 1
         
         chunks.append(remaining[:split_point].rstrip())
@@ -113,6 +114,10 @@ async def send_telegram_message(chat_id: int, text: str):
         last_response = None
         async with httpx.AsyncClient() as client:
             for i, chunk in enumerate(message_chunks, 1):
+                # Add small delay between chunks to avoid rate limiting (except for first chunk)
+                if i > 1:
+                    await asyncio.sleep(0.1)
+                
                 payload = {
                     "chat_id": chat_id,
                     "text": chunk
@@ -129,12 +134,24 @@ async def send_telegram_message(chat_id: int, text: str):
                 elif response.status_code == 404:
                     # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
                     # This is not a critical error - log it and return None without raising
-                    logger.warning(f"Cannot send message to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
+                    logger.warning(f"Cannot send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
                     logger.debug(f"404 Response details: {response.text}")
-                    return None
+                    # If this is the first chunk, return None immediately
+                    # If later chunks fail, at least some message was delivered
+                    if i == 1:
+                        return None
+                    else:
+                        logger.warning(f"Partial message delivered ({i-1}/{len(message_chunks)} chunks) before 404 error")
+                        return last_response
                 else:
                     logger.error(f"Failed to send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}, status={response.status_code}, response={response.text}")
-                    raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
+                    # If this is the first chunk, raise exception
+                    # If later chunks fail, log but don't raise (partial delivery is better than nothing)
+                    if i == 1:
+                        raise Exception(f"Telegram API returned status {response.status_code}: {response.text}")
+                    else:
+                        logger.error(f"Failed to send remaining chunks. Partial message delivered ({i-1}/{len(message_chunks)} chunks)")
+                        return last_response
         
         return last_response
     except Exception as e:
