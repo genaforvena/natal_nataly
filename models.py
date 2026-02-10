@@ -178,3 +178,19 @@ class UserNatalChart(Base):
     
     # Active status (only one chart can be active per user at a time)
     is_active = Column(Boolean, default=True)
+
+
+class ConversationMessage(Base):
+    """
+    Stores conversation thread messages for each user.
+    Maintains context for LLM conversations with FIFO management.
+    Max 10 messages per user: first 2 (user+assistant) are fixed, remaining 8 are FIFO.
+    """
+    __tablename__ = "conversation_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False)  # "user" or "assistant"
+    content = Column(Text, nullable=False)  # Message text or summary
+    is_first_pair = Column(Boolean, default=False)  # True for first user+assistant messages
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

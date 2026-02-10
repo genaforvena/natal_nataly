@@ -1003,6 +1003,9 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
     logger.info(f"Handling chatting_about_chart for user {user.telegram_id}")
     
     try:
+        # Import thread manager functions
+        from thread_manager import add_message_to_thread, get_conversation_thread
+        
         # First, try to get chart from unified UserNatalChart table (source of truth)
         user_chart = session.query(UserNatalChart).filter_by(
             telegram_id=user.telegram_id,
@@ -1039,6 +1042,12 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         if user.state == STATE_HAS_CHART:
             update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
         
+        # Add user message to conversation thread
+        add_message_to_thread(session, user.telegram_id, "user", text)
+        
+        # Get conversation history for context
+        conversation_history = get_conversation_thread(session, user.telegram_id)
+        
         # Build context for assistant
         profile = get_active_profile(session, user)
         context = build_agent_context(session, user, profile)
@@ -1046,13 +1055,16 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Get assistant response using new assistant mode
         prompt_name = "assistant_response"
         if user.assistant_mode:
-            logger.info(f"Using assistant mode for response")
-            reading = generate_assistant_response(context, text)
+            logger.info(f"Using assistant mode for response with conversation history ({len(conversation_history)} messages)")
+            reading = generate_assistant_response(context, text, conversation_history=conversation_history)
         else:
             # Fallback to legacy interpret_chart
-            logger.info(f"Using legacy chart interpretation")
-            reading = interpret_chart(chart, question=text)
+            logger.info(f"Using legacy chart interpretation with conversation history ({len(conversation_history)} messages)")
+            reading = interpret_chart(chart, question=text, conversation_history=conversation_history)
             prompt_name = "astrologer_chat"
+        
+        # Add assistant response to conversation thread
+        add_message_to_thread(session, user.telegram_id, "assistant", reading)
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
@@ -1114,6 +1126,39 @@ async def handle_profiles_command(session, user: User, chat_id: int):
         logger.exception(f"Error handling profiles command: {e}")
         try:
             response = await send_telegram_message(chat_id, "Ошибка при получении списка профилей.")
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
+
+
+async def handle_reset_thread_command(session, user: User, chat_id: int):
+    """Handle /reset_thread command to clear conversation history"""
+    logger.info(f"Handling /reset_thread command for user {user.telegram_id}")
+    
+    try:
+        from thread_manager import reset_thread, get_thread_summary
+        
+        # Get thread summary before reset (for logging)
+        summary = get_thread_summary(session, user.telegram_id)
+        logger.info(f"Thread before reset: {summary}")
+        
+        # Reset the thread
+        deleted_count = reset_thread(session, user.telegram_id)
+        
+        # Send confirmation message
+        await send_telegram_message(
+            chat_id,
+            f"✅ История разговора очищена! Удалено сообщений: {deleted_count}\n\n"
+            "Теперь мы начинаем с чистого листа. Задай мне вопрос о своей натальной карте!"
+        )
+        
+        logger.info(f"Thread reset successfully for user {user.telegram_id}, deleted {deleted_count} messages")
+        
+    except Exception as e:
+        logger.exception(f"Error handling reset_thread command: {e}")
+        try:
+            response = await send_telegram_message(chat_id, "Ошибка при очистке истории разговора.")
             if response is None:
                 logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
         except Exception as send_error:
@@ -1367,6 +1412,12 @@ async def handle_telegram_update(update: dict):
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
+                    return {"ok": True}
+                
+                # Handle /reset_thread command
+                if text.startswith("/reset_thread"):
+                    await handle_reset_thread_command(session, user, chat_id)
+                    logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
                     return {"ok": True}
             
             # Route message based on state
