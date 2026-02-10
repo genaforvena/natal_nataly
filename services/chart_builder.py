@@ -12,6 +12,9 @@ from timezonefinder import TimezoneFinder
 
 logger = logging.getLogger(__name__)
 
+# Initialize TimezoneFinder once at module level for better performance
+_timezone_finder = TimezoneFinder()
+
 # Zodiac signs for reference
 SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
@@ -117,8 +120,7 @@ def build_natal_chart_text_and_json(
     try:
         # Determine timezone if not provided
         if tz_str is None:
-            tf = TimezoneFinder()
-            tz_str = tf.timezone_at(lat=lat, lng=lng)
+            tz_str = _timezone_finder.timezone_at(lat=lat, lng=lng)
             if tz_str is None:
                 tz_str = "UTC"  # Fallback to UTC if timezone can't be determined
                 logger.warning(f"Could not determine timezone for {lat}, {lng}, using UTC")
@@ -144,6 +146,10 @@ def build_natal_chart_text_and_json(
         
         # Build text export in AstroSeek format
         text_lines = []
+        
+        # Note: We access chart._model to get the AstrologicalSubjectModel
+        # This is the documented way to access chart data in Kerykeion
+        # See: https://github.com/g-battaglia/kerykeion
         
         # Header section
         text_lines.append(f"City: {chart._model.city}")

@@ -171,6 +171,19 @@ def mark_reading_delivered(session, reading_id: int):
         raise
 
 
+def format_original_input(birth_data: dict) -> str:
+    """
+    Format birth data as original input string.
+    
+    Args:
+        birth_data: Dictionary with keys: dob, time, lat, lng
+    
+    Returns:
+        Formatted string like "DOB: 1990-05-15, Time: 14:30, Lat: 40.7128, Lng: -74.0060"
+    """
+    return f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}"
+
+
 def generate_natal_chart_kerykeion(birth_data: dict) -> dict:
     """
     Generate natal chart using Kerykeion with both text export and structured JSON.
@@ -256,7 +269,7 @@ def generate_natal_chart_kerykeion(birth_data: dict) -> dict:
             })
         
         # Build final chart in old format
-        original_input = f"DOB: {dob}, Time: {time}, Lat: {lat}, Lng: {lng}"
+        original_input = format_original_input({"dob": dob, "time": time, "lat": lat, "lng": lng})
         chart_old_format = {
             "planets": planets_old_format,
             "houses": houses_old_format,
@@ -618,7 +631,7 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             chart = generate_natal_chart_kerykeion(birth_data)
             
             # Get original input from chart
-            original_input = chart.get("original_input", f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}")
+            original_input = chart.get("original_input", format_original_input(birth_data))
             
             # Store natal chart with versioning (legacy NatalChart table)
             chart_id = store_natal_chart(
