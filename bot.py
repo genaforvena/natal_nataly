@@ -140,17 +140,17 @@ async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "HTML
                 if response.is_success:
                     logger.info(f"Message chunk {i}/{len(message_chunks)} sent successfully to chat_id={chat_id}, status={response.status_code}")
                     last_response = response
-                elif response.status_code == 404:
-                    # 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
+                elif response.status_code in [400, 404]:
+                    # 400 or 404 typically means the chat doesn't exist, user blocked the bot, or invalid chat_id
                     # This is not a critical error - log it and return None without raising
-                    logger.warning(f"Cannot send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}: Chat not found (404). User may have blocked the bot or chat_id is invalid.")
-                    logger.debug(f"404 Response details: {response.text}")
+                    logger.warning(f"Cannot send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}: Chat not found (status={response.status_code}). User may have blocked the bot or chat_id is invalid.")
+                    logger.debug(f"{response.status_code} Response details: {response.text}")
                     # If this is the first chunk, return None immediately
                     # If later chunks fail, at least some message was delivered
                     if i == 1:
                         return None
                     else:
-                        logger.warning(f"Partial message delivered ({i-1}/{len(message_chunks)} chunks) before 404 error")
+                        logger.warning(f"Partial message delivered ({i-1}/{len(message_chunks)} chunks) before {response.status_code} error")
                         return last_response
                 else:
                     logger.error(f"Failed to send message chunk {i}/{len(message_chunks)} to chat_id={chat_id}, status={response.status_code}, response={response.text}")
@@ -696,10 +696,15 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     except Exception as e:
         logger.exception(f"Error handling awaiting_birth_data: {e}")
         log_pipeline_error(session_id, str(e))
-        await send_telegram_message(
-            chat_id,
-            "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
-        )
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: str):
@@ -777,10 +782,15 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             
         except Exception as e:
             logger.exception(f"Error confirming birth data: {e}")
-            await send_telegram_message(
-                chat_id,
-                "Произошла ошибка при создании карты. Пожалуйста, попробуйте ещё раз."
-            )
+            try:
+                response = await send_telegram_message(
+                    chat_id,
+                    "Произошла ошибка при создании карты. Пожалуйста, попробуйте ещё раз."
+                )
+                if response is None:
+                    logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
             user.state = STATE_AWAITING_BIRTH_DATA
             session.commit()
     
@@ -885,23 +895,33 @@ async def handle_awaiting_chart_upload(session, user: User, chat_id: int, text: 
     except ValueError as e:
         # Parsing error
         logger.warning(f"Chart parsing failed: {e}")
-        await send_telegram_message(
-            chat_id,
-            f"❌ **Failed to parse chart:**\n{str(e)}\n\n"
-            "Please make sure your chart is in the correct format:\n"
-            "```\n"
-            "Sun: 10°30' Capricorn, House 4\n"
-            "Moon: 10°10' Libra, House 1\n"
-            "...\n"
-            "```\n\n"
-            "Type /cancel to cancel upload, or send corrected chart data."
-        )
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                f"❌ **Failed to parse chart:**\n{str(e)}\n\n"
+                "Please make sure your chart is in the correct format:\n"
+                "```\n"
+                "Sun: 10°30' Capricorn, House 4\n"
+                "Moon: 10°10' Libra, House 1\n"
+                "...\n"
+                "```\n\n"
+                "Type /cancel to cancel upload, or send corrected chart data."
+            )
+            if response is None:
+                logger.warning(f"Could not send parsing error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send parsing error message to chat_id={chat_id}: {send_error}")
     except Exception as e:
         logger.exception(f"Error handling chart upload: {e}")
-        await send_telegram_message(
-            chat_id,
-            "Произошла ошибка при обработке карты. Попробуйте ещё раз или используйте /cancel для отмены."
-        )
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при обработке карты. Попробуйте ещё раз или используйте /cancel для отмены."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def handle_awaiting_clarification(session, user: User, chat_id: int, text: str):
@@ -926,17 +946,21 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             
             # Ask again
             question = generate_clarification_question(still_missing, text)
-            await send_telegram_message(chat_id, question)
+            response = await send_telegram_message(chat_id, question)
+            if response is None:
+                logger.warning(f"Could not send clarification question to chat_id={chat_id}, chat may be invalid")
             return
         
         # All data is now present
         if not all([birth_data.get("dob"), birth_data.get("time"), 
                    birth_data.get("lat") is not None, birth_data.get("lng") is not None]):
             logger.warning("Birth data still incomplete after clarification")
-            await send_telegram_message(
+            response = await send_telegram_message(
                 chat_id,
                 "Пожалуйста, укажите все необходимые данные: дату, время и место рождения."
             )
+            if response is None:
+                logger.warning(f"Could not send incomplete data message to chat_id={chat_id}, chat may be invalid")
             return
         
         # Generate natal chart using Kerykeion
@@ -950,19 +974,29 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
         update_user_state(session, user.telegram_id, STATE_HAS_CHART, missing_fields=None)
         
         # Send confirmation message
-        await send_telegram_message(
+        response = await send_telegram_message(
             chat_id,
             "✨ Натальная карта готова.\nТеперь ты можешь задавать любые вопросы о себе."
         )
+        if response is None:
+            logger.warning(f"Could not send confirmation message to chat_id={chat_id}, chart created but notification failed")
         
         logger.info(f"Clarification completed successfully for user {user.telegram_id}")
         
     except Exception as e:
         logger.exception(f"Error handling awaiting_clarification: {e}")
-        await send_telegram_message(
-            chat_id,
-            "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
-        )
+        # Only try to send error message if chat is likely valid
+        # Avoid cascading errors when chat is invalid
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при обработке данных. Пожалуйста, попробуйте ещё раз."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
+            # Silently continue - don't raise cascading errors
 
 
 async def handle_chatting_about_chart(session, user: User, chat_id: int, text: str):
@@ -1036,10 +1070,15 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         
     except Exception as e:
         logger.exception(f"Error handling chatting_about_chart: {e}")
-        await send_telegram_message(
-            chat_id,
-            "Ниче не поняла! Спроси еще раз по-другому."
-        )
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Ниче не поняла! Спроси еще раз по-другому."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 # ============================================================================
@@ -1074,7 +1113,12 @@ async def handle_profiles_command(session, user: User, chat_id: int):
         
     except Exception as e:
         logger.exception(f"Error handling profiles command: {e}")
-        await send_telegram_message(chat_id, "Ошибка при получении списка профилей.")
+        try:
+            response = await send_telegram_message(chat_id, "Ошибка при получении списка профилей.")
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def handle_meta_conversation(session, user: User, chat_id: int, text: str):
@@ -1092,7 +1136,12 @@ async def handle_meta_conversation(session, user: User, chat_id: int, text: str)
         
     except Exception as e:
         logger.exception(f"Error handling meta conversation: {e}")
-        await send_telegram_message(chat_id, "Привет! Я твой личный астрологический ассистент. Чем могу помочь?")
+        try:
+            response = await send_telegram_message(chat_id, "Привет! Я твой личный астрологический ассистент. Чем могу помочь?")
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def handle_general_question(session, user: User, chat_id: int, text: str):
@@ -1110,7 +1159,12 @@ async def handle_general_question(session, user: User, chat_id: int, text: str):
         
     except Exception as e:
         logger.exception(f"Error handling general question: {e}")
-        await send_telegram_message(chat_id, "Произошла ошибка. Попробуй переформулировать вопрос.")
+        try:
+            response = await send_telegram_message(chat_id, "Произошла ошибка. Попробуй переформулировать вопрос.")
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def handle_transit_question(session, user: User, chat_id: int, text: str):
@@ -1189,10 +1243,15 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         
     except Exception as e:
         logger.exception(f"Error handling transit question: {e}")
-        await send_telegram_message(
-            chat_id,
-            "Произошла ошибка при расчёте транзитов. Пожалуйста, попробуйте ещё раз."
-        )
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при расчёте транзитов. Пожалуйста, попробуйте ещё раз."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
 async def route_message(session, user: User, chat_id: int, text: str):
