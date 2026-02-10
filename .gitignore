@@ -10,7 +10,7 @@ test_integration.py
 charts/
 *.svg
 
-# Test files
-test_*.py
+# Test files (exclude from root, but allow in tests/ directory)
+/test_*.py
 .env.test
 test_*.sqlite
