@@ -1,9 +1,11 @@
 """
 Intent detection for natural language routing.
-LLM-based detection to determine if user wants:
-- provide_birth_data: User providing birth data
-- ask_about_chart: Question about their natal chart  
-- ask_transit_question: Question about transits (current or future)
+LLM-based detection using classify_intent() from llm.py.
+
+Maps detailed LLM intents to simplified routing categories:
+- provide_birth_data (LLM) → birth_input (routing)
+- ask_transit_question (LLM) → transit_question (routing)
+- all other intents → natal_question (routing)
 """
 
 import logging
@@ -18,9 +20,18 @@ def detect_request_type(user_text: str) -> IntentType:
     """
     Detect the type of user request using LLM-based classification.
     
-    Uses the existing classify_intent() function from llm.py which now includes
-    the ask_transit_question intent. Maps the LLM response to our simplified
-    intent types.
+    Calls classify_intent() which returns detailed LLM intents like:
+    - provide_birth_data
+    - ask_transit_question
+    - ask_about_chart
+    - ask_general_question
+    - meta_conversation
+    - etc.
+    
+    These are mapped to simplified routing categories:
+    - provide_birth_data → birth_input
+    - ask_transit_question → transit_question
+    - all others → natal_question
     
     Args:
         user_text: User's message text
@@ -40,21 +51,18 @@ def detect_request_type(user_text: str) -> IntentType:
         
         logger.info(f"LLM classified intent as: {llm_intent} (confidence: {confidence})")
         
-        # Map LLM intent to our simplified intent types
+        # Map LLM intent to simplified routing categories
         if llm_intent == "provide_birth_data":
             logger.info("Intent detected: birth_input")
             return "birth_input"
         elif llm_intent == "ask_transit_question":
             logger.info("Intent detected: transit_question")
             return "transit_question"
-        elif llm_intent in ["ask_about_chart", "ask_general_question", "meta_conversation", 
-                           "clarify_birth_data", "new_profile_request", "switch_profile"]:
-            # All other intents are treated as natal questions for routing purposes
-            logger.info("Intent detected: natal_question")
-            return "natal_question"
         else:
-            # Unknown or low confidence - default to natal question
-            logger.info("Intent detected: natal_question (default for unknown intent)")
+            # All other intents default to natal_question
+            # This includes: ask_about_chart, ask_general_question, meta_conversation,
+            # clarify_birth_data, new_profile_request, switch_profile, unknown
+            logger.info(f"Intent detected: natal_question (mapped from {llm_intent})")
             return "natal_question"
             
     except Exception as e:
