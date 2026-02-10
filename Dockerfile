@@ -4,11 +4,12 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies needed for pyswisseph
+# Install system dependencies needed for pyswisseph and postgresql
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -25,12 +26,17 @@ RUN mkdir -p data
 
 # Copy application code
 COPY *.py .
+COPY prompts ./prompts
+COPY services ./services
 
-# Set environment variable for database path
+# Set environment variable for database path (fallback for SQLite)
 ENV DB_PATH=/app/data/natal_nataly.sqlite
 
-# Expose port 8000 for the FastAPI application
-EXPOSE 8000
+# Default port (can be overridden by environment variable)
+ENV PORT=8000
 
-# Run uvicorn server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Expose the port
+EXPOSE ${PORT}
+
+# Run uvicorn server with PORT from environment
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}

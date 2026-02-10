@@ -24,8 +24,22 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup():
     logger.info("=== Application starting up ===")
+    
+    # Log running mode
+    render_mode = os.getenv("RENDER", "false").lower() == "true"
+    mode = "render" if render_mode else "local"
+    logger.info(f"Running mode: {mode}")
+    
+    # Log webhook status
+    webhook_enabled = bool(os.getenv("WEBHOOK_URL")) and render_mode
+    logger.info(f"Webhook enabled: {webhook_enabled}")
+    if webhook_enabled:
+        logger.info(f"Webhook URL: {os.getenv('WEBHOOK_URL')}")
+    
+    # Initialize database (synchronous call)
     init_db()
     logger.info("Database initialized")
+    
     logger.info("=== Application startup complete ===")
 
 @app.get("/health")
