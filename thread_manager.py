@@ -34,7 +34,14 @@ def add_message_to_thread(session: Session, telegram_id: str, role: str, content
         
     Returns:
         Created ConversationMessage object
+        
+    Raises:
+        ValueError: If role is not "user" or "assistant"
     """
+    # Validate role
+    if role not in ("user", "assistant"):
+        raise ValueError(f"Invalid role '{role}'. Must be 'user' or 'assistant'.")
+    
     logger.debug(
         "Adding message to thread: telegram_id=%s, role=%s, content_length=%d",
         telegram_id,
