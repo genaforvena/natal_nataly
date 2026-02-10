@@ -617,6 +617,9 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             logger.info(f"Generating natal chart for user {user.telegram_id}")
             chart = generate_natal_chart_kerykeion(birth_data)
             
+            # Get original input from chart
+            original_input = chart.get("original_input", f"DOB: {birth_data['dob']}, Time: {birth_data['time']}, Lat: {birth_data['lat']}, Lng: {birth_data['lng']}")
+            
             # Store natal chart with versioning (legacy NatalChart table)
             chart_id = store_natal_chart(
                 user.telegram_id,
@@ -639,7 +642,7 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                 chart_json=json.dumps(chart, ensure_ascii=False),
                 source="generated",
                 original_input=original_input,
-                engine_version=chart.get("engine_version", get_engine_version()),
+                engine_version=chart.get("engine_version", "kerykeion_swisseph"),
                 is_active=True
             )
             session.add(user_chart)
