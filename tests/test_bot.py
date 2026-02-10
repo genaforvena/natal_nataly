@@ -111,23 +111,14 @@ class TestMessageHandling:
 class TestBotHelperFunctions:
     """Tests for bot helper functions."""
 
-    def test_message_parsing_logic(self):
-        """Test basic message parsing logic."""
-        # This is a placeholder for actual parsing tests
-        # Would need to import and test actual parsing functions from bot.py
-        assert True
+    def test_bot_module_imports(self):
+        """Test that bot module imports successfully."""
+        import bot
+        assert bot is not None
 
-    def test_state_management(self):
-        """Test user state transitions."""
-        # Placeholder for state management tests
-        # Would test STATE_AWAITING_BIRTH_DATA, STATE_HAS_CHART, etc.
+    def test_state_constants_defined(self):
+        """Test user state constants are defined."""
         from models import STATE_AWAITING_BIRTH_DATA, STATE_HAS_CHART
         
         assert STATE_AWAITING_BIRTH_DATA is not None
         assert STATE_HAS_CHART is not None
-
-    def test_validation_logic(self):
-        """Test input validation logic."""
-        # Placeholder for validation tests
-        # Would test date/time/coordinate validation
-        assert True

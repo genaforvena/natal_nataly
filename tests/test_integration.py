@@ -128,8 +128,8 @@ class TestMessageSending:
         # Verify API was called
         mock_post.assert_called_once()
         
-        # Verify success
-        assert result is not None or result == {"ok": True}
+        # Verify success - result should be the API response or similar
+        assert result is not None
 
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient.post')
@@ -169,17 +169,19 @@ class TestMessageSending:
         }
         mock_post.return_value = mock_response
         
-        # Should handle error gracefully
+        # Should handle error gracefully - either returns error result or raises exception
+        result = None
+        error_raised = False
         try:
             result = await send_telegram_message(
                 chat_id=123456,
                 text="Test message"
             )
-            # Either returns error result or raises exception
-            assert result is not None or True
         except Exception:
-            # Exception is acceptable error handling
-            pass
+            error_raised = True
+        
+        # Either result is returned (even if error) or exception was raised
+        assert result is not None or error_raised
 
     @pytest.mark.asyncio
     @patch('httpx.AsyncClient.post')

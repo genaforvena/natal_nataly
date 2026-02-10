@@ -181,25 +181,18 @@ class TestLLMIntegration:
 class TestLLMHelperFunctions:
     """Tests for LLM helper functions like extract_birth_data, classify_intent."""
 
-    @patch('llm.call_llm')
-    def test_extract_birth_data_with_valid_input(self, mock_call_llm):
-        """Test birth data extraction from user input."""
+    def test_extract_birth_data_exists(self):
+        """Verify extract_birth_data function exists and is importable."""
         from llm import extract_birth_data
         
-        # Mock LLM response with valid JSON
-        mock_call_llm.return_value = '{"date": "1990-01-15", "time": "14:30", "lat": 40.7128, "lng": -74.0060}'
-        
-        # This would need to be implemented based on actual function signature
-        # For now, just verify the mock is set up correctly
-        assert mock_call_llm is not None
+        # Verify function exists
+        assert extract_birth_data is not None
+        assert callable(extract_birth_data)
 
-    @patch('llm.call_llm')
-    def test_classify_intent(self, mock_call_llm):
-        """Test intent classification for user messages."""
+    def test_classify_intent_exists(self):
+        """Verify classify_intent function exists and is importable."""
         from llm import classify_intent
         
-        # Mock LLM response
-        mock_call_llm.return_value = "BIRTH_DATA"
-        
-        # This would need actual implementation testing
-        assert mock_call_llm is not None
+        # Verify function exists
+        assert classify_intent is not None
+        assert callable(classify_intent)
