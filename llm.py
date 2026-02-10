@@ -325,3 +325,59 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
     except Exception as e:
         logger.exception(f"Error interpreting transits: {e}")
         raise
+
+
+def extract_transit_date(text: str) -> dict:
+    """
+    Use LLM to extract target date for transit calculations from natural language text.
+    
+    Args:
+        text: User's message text
+        
+    Returns:
+        dict with keys: date (YYYY-MM-DD or null or relative like "tomorrow"), time_specified (bool)
+    """
+    logger.debug(f"extract_transit_date called with message length: {len(text)}")
+    try:
+        system_prompt = get_prompt("transit_date_extractor.system")
+        user_prompt = get_prompt("transit_date_extractor.user").format(text=text)
+        
+        logger.info(f"Making LLM API call for transit date extraction with model: {MODEL}")
+        
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1  # Low temperature for consistent extraction
+        )
+        
+        result = response.choices[0].message.content
+        logger.debug(f"LLM response: {result}")
+        
+        # Parse JSON response
+        # Clean up response - sometimes LLM might add markdown code blocks
+        result = result.strip()
+        if result.startswith("```json"):
+            result = result[7:]  # Remove ```json
+        if result.startswith("```"):
+            result = result[3:]  # Remove ```
+        if result.endswith("```"):
+            result = result[:-3]  # Remove ```
+        result = result.strip()
+        
+        date_data = json.loads(result)
+        logger.info(f"Transit date extracted successfully: date={date_data.get('date')}, time_specified={date_data.get('time_specified')}")
+        
+        return date_data
+    except json.JSONDecodeError as e:
+        logger.exception(f"Failed to parse JSON from LLM response: {e}")
+        logger.error(f"Raw response: {result}")
+        # Return null date to use current time
+        return {"date": None, "time_specified": False}
+    except Exception as e:
+        logger.exception(f"Error during transit date extraction: {e}")
+        # Return null date to use current time
+        return {"date": None, "time_specified": False}
+

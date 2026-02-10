@@ -15,13 +15,16 @@ This implementation adds natural language transit support to the natal_nataly as
 - Maps LLM intent classifications to simplified routing categories
 - Graceful fallback to natal_question on errors
 
-### 2. Flexible Date Parsing
-Supports multiple date formats:
-- **ISO format**: `2026-03-15`
-- **European format**: `15.03.2026`
-- **Natural language (English)**: "march 2026", "next month", "tomorrow"
-- **Natural language (Russian)**: "март 2026", "следующий месяц", "завтра"
+### 2. LLM-Based Date Parsing
+- **Uses LLM for date extraction** similar to birth data extraction
+- Supports multiple date formats through natural language understanding:
+  - **ISO format**: `2026-03-15`
+  - **European format**: `15.03.2026`
+  - **Natural language (English)**: "march 2026", "next month", "tomorrow"
+  - **Natural language (Russian)**: "март 2026", "следующий месяц", "завтра"
+  - **Relative dates**: "now", "today", "tomorrow", "yesterday"
 - **Defaults to current UTC** when no date specified
+- Consistent with birth data extraction approach for better accuracy
 
 ### 3. Transit Calculations
 - Uses **Kerykeion library** with Swiss Ephemeris backend
@@ -71,17 +74,37 @@ The system prompt has been updated to include:
 - Other existing intents...
 
 #### `services/date_parser.py`
-Extracts dates from natural language:
+LLM-based date extraction for transit calculations:
 ```python
 def parse_transit_date(text: str) -> datetime:
     """Returns datetime in UTC timezone"""
 ```
 
-Supports:
-- Explicit dates (2026-03-15, 15.03.2026)
-- Natural language (march 2026, март 2026)
-- Time keywords (now, today, сейчас)
-- Year-only references (2026 → 2026-01-01)
+**How it works:**
+- Calls `extract_transit_date()` from `llm.py` to parse date using LLM
+- LLM extracts date in YYYY-MM-DD format or relative dates
+- Supports natural language in Russian and English
+- Handles relative dates: "tomorrow", "next_month", "yesterday"
+- Defaults to current UTC when no date specified
+- Consistent with birth data extraction approach
+
+**Supported formats:**
+- ISO dates: "2026-03-15"
+- European dates: "15.03.2026"  
+- Natural language: "march 2026", "март 2026"
+- Relative dates: "now", "today", "tomorrow", "next month"
+- Year only: "2026"
+
+#### `llm.py` - New Function
+Added `extract_transit_date()` function:
+```python
+def extract_transit_date(text: str) -> dict:
+    """Returns: {"date": "YYYY-MM-DD" or null or relative, "time_specified": bool}"""
+```
+
+Uses dedicated prompt templates:
+- `prompts/transit_date_extractor.system.txt` - System prompt for date extraction
+- `prompts/transit_date_extractor.user.txt` - User prompt template
 
 #### `services/transit_builder.py`
 Calculates transits using Kerykeion:
@@ -190,7 +213,8 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 5. Intent mapped to `"transit_question"`
 6. `handle_transit_question()` is called:
    - Check if user has natal chart (fail-safe)
-   - Parse date from message using `parse_transit_date()`
+   - Parse date using `parse_transit_date()` which calls LLM's `extract_transit_date()`
+   - LLM extracts date in standard format or null for "now"
    - Calculate transits using `build_transits()`
    - Format transits with `format_transits_for_llm()`
    - Get LLM interpretation with `interpret_transits()`
@@ -208,7 +232,7 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 
 ### Unit Tests Performed
 - ✅ LLM intent classification updated with transit intent
-- ✅ Date parsing with 7 test cases (various formats)
+- ✅ LLM date extraction implemented with dedicated prompts
 - ✅ Syntax validation for all Python files
 - ✅ Code review completed
 - ✅ CodeQL security scan (0 vulnerabilities)
@@ -216,12 +240,13 @@ User: DOB: 1990-05-15, Time: 14:30, Lat: 40.7, Lng: -74.0
 ### Test Results
 ```
 LLM Intent Classification: Updated with ask_transit_question intent
-Date Parsing: 7/7 passed
+LLM Date Extraction: Implemented similar to birth data extraction
 Security: 0 vulnerabilities found
 ```
 
 ### Manual Testing Required
 - [ ] End-to-end testing with deployed bot
+- [ ] Test various date formats with LLM extraction
 - [ ] User acceptance testing with real queries
 - [ ] Performance testing under load
 - [ ] Edge case testing (malformed dates, etc.)
@@ -240,14 +265,16 @@ Uses existing dependencies:
 - `kerykeion` - For transit calculations (already in use for natal charts)
 - `timezonefinder` - For timezone detection (already in use)
 - `openai` - For LLM calls (already in use)
-- Standard library: `re`, `datetime`, `logging`
+- Standard library: `datetime`, `logging`
 
 ## Performance Considerations
 
 ### LLM Usage
-- Intent detection now uses one LLM call per message for classification
-- Total LLM calls per transit question: 2 (1 for intent + 1 for interpretation)
-- Uses low temperature (0.1) for consistent intent classification
+- Intent detection: 1 LLM call per message for classification
+- Date extraction: 1 LLM call per transit question for date parsing
+- Transit interpretation: 1 LLM call for astrological reading
+- **Total LLM calls per transit question: 3** (intent + date + interpretation)
+- Uses low temperature (0.1) for consistent classification and extraction
 - Graceful fallback on classification errors
 
 ### Computational Load
