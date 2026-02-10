@@ -35,8 +35,8 @@ ENV DB_PATH=/app/data/natal_nataly.sqlite
 # Default port (can be overridden by environment variable)
 ENV PORT=8000
 
-# Expose the port
-EXPOSE ${PORT}
+# Expose common ports (8000 for local, 10000 for Render)
+EXPOSE 8000 10000
 
 # Run uvicorn server with PORT from environment
 # Using shell form to allow environment variable expansion
