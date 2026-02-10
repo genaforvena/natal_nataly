@@ -41,15 +41,15 @@ def test_basic_thread_operations(db_session):
     
     # Add first user message
     msg1 = add_message_to_thread(db_session, test_user_id, "user", "What is my sun sign?")
-    assert msg1.is_first_pair == True, "First user message should be marked as first_pair"
+    assert msg1.is_first_pair is True, "First user message should be marked as first_pair"
     
     # Add first assistant message
     msg2 = add_message_to_thread(db_session, test_user_id, "assistant", "Your sun sign is Taurus.")
-    assert msg2.is_first_pair == True, "First assistant message should be marked as first_pair"
+    assert msg2.is_first_pair is True, "First assistant message should be marked as first_pair"
     
     # Add third message (should not be part of first pair)
     msg3 = add_message_to_thread(db_session, test_user_id, "user", "Tell me more about it")
-    assert msg3.is_first_pair == False, "Third message should not be marked as first_pair"
+    assert msg3.is_first_pair is False, "Third message should not be marked as first_pair"
     
     # Check thread
     thread = get_conversation_thread(db_session, test_user_id)
@@ -71,7 +71,7 @@ def test_fifo_trimming(db_session):
     # Add 12 messages (exceeding MAX_THREAD_LENGTH of 10)
     for i in range(12):
         role = "user" if i % 2 == 0 else "assistant"
-        content = f"Message {i+1}"
+        content = f"Message {i + 1}"
         add_message_to_thread(db_session, test_user_id, role, content)
     
     # Check final thread length
@@ -104,7 +104,7 @@ def test_reset_thread(db_session):
     # Add some messages
     for i in range(5):
         role = "user" if i % 2 == 0 else "assistant"
-        add_message_to_thread(db_session, test_user_id, role, f"Message {i+1}")
+        add_message_to_thread(db_session, test_user_id, role, f"Message {i + 1}")
     
     thread = get_conversation_thread(db_session, test_user_id)
     assert len(thread) == 5

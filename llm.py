@@ -31,7 +31,13 @@ else:
     raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Use 'deepseek' or 'groq'.")
 
 
-def call_llm(prompt_type: str, variables: dict, temperature: float = 0.7, is_parser: bool = None, conversation_history: list = None) -> str:
+def call_llm(
+    prompt_type: str,
+    variables: dict,
+    temperature: float = 0.7,
+    is_parser: bool = None,
+    conversation_history: list = None
+) -> str:
     """
     Universal LLM call function with new prompt architecture.
     
