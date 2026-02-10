@@ -39,4 +39,5 @@ ENV PORT=8000
 EXPOSE ${PORT}
 
 # Run uvicorn server with PORT from environment
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+# Using shell form to allow environment variable expansion
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT

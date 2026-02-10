@@ -9,9 +9,17 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-groq}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      # Database configuration
+      # For SQLite (default): Uses DB_PATH below
+      # For PostgreSQL: Set DATABASE_URL in .env
+      # Example: DATABASE_URL=postgresql://user:password@host:5432/dbname
+      - DATABASE_URL=${DATABASE_URL}
       - DB_PATH=/app/data/natal_nataly.sqlite
+      # Debug mode
+      - DEBUG_MODE=${DEBUG_MODE:-false}
+      - DEVELOPER_TELEGRAM_ID=${DEVELOPER_TELEGRAM_ID}
     volumes:
-      # Persist the SQLite database
+      # Persist the SQLite database (if using SQLite)
       - ./data:/app/data
     restart: unless-stopped
     healthcheck:
