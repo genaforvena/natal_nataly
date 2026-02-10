@@ -144,8 +144,7 @@ def trim_thread_if_needed(session: Session, telegram_id: str):
         
         logger.info(f"Thread exceeds limit: {message_count}/{MAX_THREAD_LENGTH}. Deleting {messages_to_delete} messages")
         
-        # Separate fixed and non-fixed messages
-        fixed_messages = [msg for msg in messages if msg.is_first_pair]
+        # Separate non-fixed messages
         non_fixed_messages = [msg for msg in messages if not msg.is_first_pair]
         
         # Delete oldest non-fixed messages (FIFO)

@@ -1047,7 +1047,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         
         # Get conversation history for context
         conversation_history = get_conversation_thread(session, user.telegram_id)
-        logger.info(f"Retrieved conversation history: {len(conversation_history)} messages")
+        logger.debug(f"Retrieved conversation history: {len(conversation_history)} messages")
         
         # Build context for assistant
         profile = get_active_profile(session, user)
