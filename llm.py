@@ -338,6 +338,7 @@ def extract_transit_date(text: str) -> dict:
         dict with keys: date (YYYY-MM-DD or null or relative like "tomorrow"), time_specified (bool)
     """
     logger.debug(f"extract_transit_date called with message length: {len(text)}")
+    result = None  # Initialize to avoid UnboundLocalError
     try:
         system_prompt = get_prompt("transit_date_extractor.system")
         user_prompt = get_prompt("transit_date_extractor.user").format(text=text)
@@ -373,7 +374,8 @@ def extract_transit_date(text: str) -> dict:
         return date_data
     except json.JSONDecodeError as e:
         logger.exception(f"Failed to parse JSON from LLM response: {e}")
-        logger.error(f"Raw response: {result}")
+        if result:
+            logger.error(f"Raw response: {result}")
         # Return null date to use current time
         return {"date": None, "time_specified": False}
     except Exception as e:

@@ -31,7 +31,7 @@ def parse_transit_date(text: str) -> datetime:
         date_data = extract_transit_date(text)
         date_str = date_data.get("date")
         
-        if not date_str or date_str is None:
+        if not date_str:
             # No date specified or "now" - use current UTC
             logger.info("No date specified or 'now' detected, using current UTC time")
             return datetime.now(timezone.utc)
