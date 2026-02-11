@@ -20,7 +20,7 @@ class TestTelegramIntegration:
     @pytest.fixture
     def client(self):
         """Create FastAPI test client."""
-        from main import app
+        from src.main import app
         return TestClient(app)
 
     @pytest.fixture
@@ -54,8 +54,8 @@ class TestTelegramIntegration:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
-    @patch('bot.send_telegram_message')
-    @patch('bot.SessionLocal')
+    @patch('src.bot.send_telegram_message')
+    @patch('src.bot.SessionLocal')
     def test_webhook_endpoint_receives_message(self, mock_db, mock_send, client, mock_telegram_update):
         """Test that webhook endpoint receives and processes messages."""
         # Setup mocks
@@ -68,8 +68,8 @@ class TestTelegramIntegration:
         # Verify response
         assert response.status_code == 200
 
-    @patch('bot.send_telegram_message')
-    @patch('bot.SessionLocal')
+    @patch('src.bot.send_telegram_message')
+    @patch('src.bot.SessionLocal')
     def test_webhook_handles_text_message(self, mock_db, mock_send, client, mock_telegram_update):
         """Test webhook handling of text messages."""
         # Modify message to include birth data
@@ -88,7 +88,7 @@ class TestTelegramIntegration:
         # Should handle gracefully
         assert response.status_code in [200, 400, 422]
 
-    @patch('bot.send_telegram_message')
+    @patch('src.bot.send_telegram_message')
     def test_webhook_handles_missing_message_field(self, mock_send, client):
         """Test webhook with missing message field."""
         mock_send.return_value = AsyncMock()
@@ -111,7 +111,7 @@ class TestMessageSending:
     @patch('httpx.AsyncClient.post')
     async def test_send_telegram_message_success(self, mock_post):
         """Test successful message sending."""
-        from bot import send_telegram_message
+        from src.bot import send_telegram_message
         
         # Mock successful API response
         mock_response = Mock()
@@ -135,7 +135,7 @@ class TestMessageSending:
     @patch('httpx.AsyncClient.post')
     async def test_send_telegram_message_with_html(self, mock_post):
         """Test sending message with HTML formatting."""
-        from bot import send_telegram_message
+        from src.bot import send_telegram_message
         
         mock_response = Mock()
         mock_response.status_code = 200
@@ -157,7 +157,7 @@ class TestMessageSending:
     @patch('httpx.AsyncClient.post')
     async def test_send_telegram_message_handles_api_error(self, mock_post):
         """Test handling of Telegram API errors."""
-        from bot import send_telegram_message
+        from src.bot import send_telegram_message
         
         # Mock error response
         mock_response = Mock()
@@ -187,7 +187,7 @@ class TestMessageSending:
     @patch('httpx.AsyncClient.post')
     async def test_send_telegram_message_with_long_text(self, mock_post):
         """Test sending long messages that need splitting."""
-        from bot import send_telegram_message
+        from src.bot import send_telegram_message
         
         mock_response = Mock()
         mock_response.status_code = 200
@@ -211,10 +211,10 @@ class TestMessageSending:
 class TestDatabaseIntegration:
     """Tests for database operations."""
 
-    @patch('db.create_engine')
+    @patch('src.db.create_engine')
     def test_database_initialization(self, mock_engine):
         """Test database initialization."""
-        from db import init_db
+        from src.db import init_db
         
         # Mock engine
         mock_engine.return_value = Mock()
@@ -230,7 +230,7 @@ class TestDatabaseIntegration:
 
     def test_database_models_defined(self):
         """Test that database models are properly defined."""
-        from models import User, BirthData, Reading
+        from src.models import User, BirthData, Reading
         
         # Verify models exist
         assert User is not None

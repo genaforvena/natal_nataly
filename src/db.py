@@ -30,7 +30,7 @@ Base = declarative_base()
 
 def init_db():
     logger.info("Initializing database schema")
-    from models import (
+    from src.models import (
         User, BirthData, Reading, AstroProfile, PipelineLog,
         NatalChart, DebugSession, UserNatalChart, ConversationMessage
     )

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, ForeignKey
 from datetime import datetime, timezone
-from db import Base
+from src.db import Base
 
 # User state constants
 STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"

@@ -9,8 +9,8 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from db import SessionLocal
-from models import PipelineLog, NatalChart, DebugSession, Reading
+from src.db import SessionLocal
+from src.models import PipelineLog, NatalChart, DebugSession, Reading
 
 # Configure logging
 logger = logging.getLogger(__name__)

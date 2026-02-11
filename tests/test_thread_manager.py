@@ -6,8 +6,8 @@ Tests the FIFO logic, thread trimming, and reset functionality.
 
 import pytest
 
-from db import SessionLocal, init_db
-from thread_manager import (
+from src.db import SessionLocal, init_db
+from src.thread_manager import (
     add_message_to_thread,
     get_conversation_thread,
     reset_thread,

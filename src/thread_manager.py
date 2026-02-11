@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
-from models import ConversationMessage
+from src.models import ConversationMessage
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ Tests the core natal chart generation functionality including:
 """
 
 import pytest
-from services.chart_builder import (
+from src.services.chart_builder import (
     build_natal_chart_text_and_json,
     deg_to_dms,
     house_suffix

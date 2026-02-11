@@ -9,7 +9,7 @@ Tests the core message handling logic:
 """
 
 import pytest
-from bot import split_message
+from src.bot import split_message
 
 
 @pytest.mark.unit
@@ -113,12 +113,12 @@ class TestBotHelperFunctions:
 
     def test_bot_module_imports(self):
         """Test that bot module imports successfully."""
-        import bot
+        from src import bot
         assert bot is not None
 
     def test_state_constants_defined(self):
         """Test user state constants are defined."""
-        from models import STATE_AWAITING_BIRTH_DATA, STATE_HAS_CHART
+        from src.models import STATE_AWAITING_BIRTH_DATA, STATE_HAS_CHART
         
         assert STATE_AWAITING_BIRTH_DATA is not None
         assert STATE_HAS_CHART is not None

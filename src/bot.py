@@ -4,11 +4,17 @@ import httpx
 import logging
 import asyncio
 from datetime import datetime, timezone
-from services.chart_builder import build_natal_chart_text_and_json
-from llm import extract_birth_data, generate_clarification_question, interpret_chart, classify_intent, generate_assistant_response
-from db import SessionLocal
-from models import User, BirthData, Reading, AstroProfile, UserNatalChart
-from models import (
+from src.services.chart_builder import build_natal_chart_text_and_json
+from src.llm import (
+    extract_birth_data,
+    generate_clarification_question,
+    interpret_chart,
+    classify_intent,
+    generate_assistant_response
+)
+from src.db import SessionLocal
+from src.models import User, BirthData, Reading, AstroProfile, UserNatalChart
+from src.models import (
     STATE_AWAITING_BIRTH_DATA,
     STATE_AWAITING_CLARIFICATION,
     STATE_AWAITING_CONFIRMATION,
@@ -16,7 +22,7 @@ from models import (
     STATE_HAS_CHART,
     STATE_CHATTING_ABOUT_CHART
 )
-from debug import (
+from scripts.debug import (
     DEBUG_MODE, 
     log_pipeline_stage_1_raw_input,
     log_pipeline_stage_2_parsed_data,
@@ -30,9 +36,9 @@ from debug import (
     create_debug_session,
     complete_debug_session
 )
-from debug_commands import handle_debug_command
-from user_commands import handle_user_command
-from chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIGINAL_INPUT_LENGTH
+from scripts.debug_commands import handle_debug_command
+from src.user_commands import handle_user_command
+from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIGINAL_INPUT_LENGTH
 
 # Configure logging
 logger = logging.getLogger(__name__)
