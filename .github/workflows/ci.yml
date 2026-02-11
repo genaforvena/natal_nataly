@@ -200,14 +200,7 @@ jobs:
             -e TELEGRAM_BOT_TOKEN=test_token \
             -e LLM_PROVIDER=groq \
             -e GROQ_API_KEY=test_key \
-            natal-nataly:test python -c "
-from src.bot import handle_telegram_update
-from src.db import init_db
-from src.models import User
-from src.llm import call_llm
-from src.services.chart_builder import build_natal_chart_text_and_json
-print('✓ All critical modules imported successfully')
-"
+            natal-nataly:test python -c "from src.bot import handle_telegram_update; from src.db import init_db; from src.models import User; from src.llm import call_llm; from src.services.chart_builder import build_natal_chart_text_and_json; print('✓ All critical modules imported successfully')"
           
           # Test 4: Check directory structure inside container
           echo "Test 4: Verifying container directory structure..."
