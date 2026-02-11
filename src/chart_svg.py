@@ -4,6 +4,7 @@ Generates basic SVG natal chart visualizations
 """
 import logging
 import math
+import os
 from typing import Dict, Any
 
 # Configure logging
@@ -157,8 +158,6 @@ def save_chart_svg(telegram_id: str, natal_chart: Dict[str, Any], charts_dir: st
     Returns:
         Path to saved SVG file
     """
-    import os
-    
     logger.info(f"Saving SVG chart for user {telegram_id}")
     
     # Create charts directory if it doesn't exist

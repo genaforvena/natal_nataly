@@ -2,6 +2,10 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import logging
+from src.models import (
+    User, BirthData, Reading, AstroProfile, PipelineLog,
+    NatalChart, DebugSession, UserNatalChart, ConversationMessage
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -30,9 +34,5 @@ Base = declarative_base()
 
 def init_db():
     logger.info("Initializing database schema")
-    from src.models import (
-        User, BirthData, Reading, AstroProfile, PipelineLog,
-        NatalChart, DebugSession, UserNatalChart, ConversationMessage
-    )
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized successfully")
