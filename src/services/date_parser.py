@@ -22,7 +22,7 @@ def parse_transit_date(text: str) -> datetime:
     Returns:
         datetime object in UTC timezone. Defaults to current UTC if no date found.
     """
-    from llm import extract_transit_date
+    from src.llm import extract_transit_date
     
     logger.debug(f"Parsing transit date from text: {text[:100]}...")
     

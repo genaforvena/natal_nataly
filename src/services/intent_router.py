@@ -40,7 +40,7 @@ def detect_request_type(user_text: str) -> IntentType:
     Returns:
         One of: "birth_input", "natal_question"
     """
-    from llm import classify_intent
+    from src.llm import classify_intent
     
     logger.debug(f"Detecting intent for message: {user_text[:100]}...")
     

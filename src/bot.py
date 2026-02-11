@@ -1292,7 +1292,7 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         logger.info("Transits calculated successfully")
         
         # Get LLM interpretation
-        from llm import interpret_transits
+        from src.llm import interpret_transits
         reading = interpret_transits(chart, transits_text, text)
         
         # Save reading to database
@@ -1300,8 +1300,8 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         reading_id = reading_record.id
         
         # Track LLM prompt for reproducibility
-        from llm import MODEL
-        from prompt_loader import load_response_prompt
+        from src.llm import MODEL
+        from src.prompt_loader import load_response_prompt
         try:
             # Load the response prompt used for transit interpretation
             prompt_content = load_response_prompt("transit_reading")
