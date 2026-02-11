@@ -45,8 +45,8 @@ class TestLLMIntegration:
         # Verify result
         assert result == "Parsed result"
 
-    @patch('llm.load_response_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_response_prompt')
+    @patch('src.llm.client')
     def test_call_llm_response_prompt(self, mock_client, mock_load_response):
         """Test calling LLM with a response prompt (with personality)."""
         # Setup mock
@@ -73,8 +73,8 @@ class TestLLMIntegration:
         # Verify result
         assert result == "Generated response"
 
-    @patch('llm.load_parser_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_parser_prompt')
+    @patch('src.llm.client')
     def test_call_llm_variable_substitution(self, mock_client, mock_load_parser):
         """Test that variables are properly substituted in prompts."""
         # Setup mock with multiple variables
@@ -103,8 +103,8 @@ class TestLLMIntegration:
         assert "30" in messages
         assert "New York" in messages
 
-    @patch('llm.load_parser_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_parser_prompt')
+    @patch('src.llm.client')
     def test_call_llm_missing_variable_raises_error(self, mock_client, mock_load_parser):
         """Test that missing required variables are handled gracefully."""
         # Setup mock with required variable
@@ -124,8 +124,8 @@ class TestLLMIntegration:
         # Should return a result even with missing variable
         assert result is not None
 
-    @patch('llm.load_parser_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_parser_prompt')
+    @patch('src.llm.client')
     def test_call_llm_handles_empty_response(self, mock_client, mock_load_parser):
         """Test handling of empty LLM responses."""
         # Setup mock
@@ -144,8 +144,8 @@ class TestLLMIntegration:
         # Should return empty string
         assert result == ""
 
-    @patch('llm.load_parser_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_parser_prompt')
+    @patch('src.llm.client')
     def test_call_llm_auto_detects_parser_type(self, mock_client, mock_load_parser):
         """Test that parser type is auto-detected from prompt_type."""
         mock_load_parser.return_value = "Test: {text}"
@@ -160,8 +160,8 @@ class TestLLMIntegration:
         )
         mock_load_parser.assert_called()
 
-    @patch('llm.load_response_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_response_prompt')
+    @patch('src.llm.client')
     def test_call_llm_auto_detects_response_type(self, mock_client, mock_load_response):
         """Test that response type is auto-detected from prompt_type."""
         mock_load_response.return_value = "Test: {text}"
@@ -183,7 +183,7 @@ class TestLLMHelperFunctions:
 
     def test_extract_birth_data_exists(self):
         """Verify extract_birth_data function exists and is importable."""
-        from llm import extract_birth_data
+        from src.llm import extract_birth_data
         
         # Verify function exists
         assert extract_birth_data is not None
@@ -191,7 +191,7 @@ class TestLLMHelperFunctions:
 
     def test_classify_intent_exists(self):
         """Verify classify_intent function exists and is importable."""
-        from llm import classify_intent
+        from src.llm import classify_intent
         
         # Verify function exists
         assert classify_intent is not None
