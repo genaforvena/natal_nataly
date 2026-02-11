@@ -1033,7 +1033,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
     
     try:
         # Import thread manager functions
-        from thread_manager import add_message_to_thread, get_conversation_thread
+        from src.thread_manager import add_message_to_thread, get_conversation_thread
         
         # First, try to get chart from unified UserNatalChart table (source of truth)
         user_chart = session.query(UserNatalChart).filter_by(
@@ -1170,7 +1170,7 @@ async def handle_reset_thread_command(session, user: User, chat_id: int):
     logger.info(f"Handling /reset_thread command for user {user.telegram_id}")
     
     try:
-        from thread_manager import reset_thread, get_thread_summary
+        from src.thread_manager import reset_thread, get_thread_summary
         
         # Get thread summary before reset (for logging)
         summary = get_thread_summary(session, user.telegram_id)
@@ -1280,12 +1280,12 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
                 chart = json.loads(profile.natal_chart_json)
         
         # Parse transit date from user's message
-        from services.date_parser import parse_transit_date
+        from src.services.date_parser import parse_transit_date
         transit_date = parse_transit_date(text)
         logger.info(f"Parsed transit date: {transit_date.isoformat()}")
         
         # Calculate transits
-        from services.transit_builder import build_transits, format_transits_for_llm
+        from src.services.transit_builder import build_transits, format_transits_for_llm
         transits = build_transits(chart, transit_date)
         transits_text = format_transits_for_llm(transits)
         
@@ -1356,7 +1356,7 @@ async def route_message(session, user: User, chat_id: int, text: str):
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
             # Use LLM-based intent detection
-            from services.intent_router import detect_request_type
+            from src.services.intent_router import detect_request_type
             intent_type = detect_request_type(text)
             
             logger.info(f"Intent detected: {intent_type}")
