@@ -20,7 +20,7 @@ class TestTelegramIntegration:
     @pytest.fixture
     def client(self):
         """Create FastAPI test client."""
-        from main import app
+        from src.main import app
         return TestClient(app)
 
     @pytest.fixture

@@ -7,9 +7,9 @@ import json
 import logging
 from typing import Optional
 from datetime import datetime
-from db import SessionLocal
-from models import PipelineLog, NatalChart, DebugSession, User, Reading
-from debug import is_developer, DEBUG_MODE
+from src.db import SessionLocal
+from src.models import PipelineLog, NatalChart, DebugSession, User, Reading
+from scripts.debug import is_developer, DEBUG_MODE
 
 # Configure logging
 logger = logging.getLogger(__name__)

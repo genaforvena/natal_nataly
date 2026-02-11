@@ -25,9 +25,9 @@ RUN mkdir -p ephe
 RUN mkdir -p data
 
 # Copy application code
-COPY *.py .
-COPY prompts ./prompts
-COPY services ./services
+COPY src ./src
+COPY scripts ./scripts
+COPY tests ./tests
 
 # Set environment variable for database path (fallback for SQLite)
 ENV DB_PATH=/app/data/natal_nataly.sqlite
@@ -38,6 +38,9 @@ ENV PORT=8000
 # Expose common ports (8000 for local, 10000 for Render)
 EXPOSE 8000 10000
 
+# Add src to PYTHONPATH so imports work correctly
+ENV PYTHONPATH=/app
+
 # Run uvicorn server with PORT from environment
 # Using shell form to allow environment variable expansion
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+CMD uvicorn src.main:app --host 0.0.0.0 --port $PORT

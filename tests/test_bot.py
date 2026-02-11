@@ -9,7 +9,7 @@ Tests the core message handling logic:
 """
 
 import pytest
-from bot import split_message
+from src.bot import split_message
 
 
 @pytest.mark.unit

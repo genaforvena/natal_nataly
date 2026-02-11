@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from openai import OpenAI
-from prompt_loader import load_parser_prompt, load_response_prompt
+from src.prompt_loader import load_parser_prompt, load_response_prompt
 
 # Configure logging
 logger = logging.getLogger(__name__)

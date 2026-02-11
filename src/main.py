@@ -1,8 +1,8 @@
 import os
 import logging
 from fastapi import FastAPI, Request
-from bot import handle_telegram_update
-from db import init_db
+from src.bot import handle_telegram_update
+from src.db import init_db
 
 
 class HealthCheckFilter(logging.Filter):

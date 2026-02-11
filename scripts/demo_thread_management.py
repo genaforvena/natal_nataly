@@ -4,10 +4,11 @@
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path to allow imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from db import SessionLocal, init_db  # noqa: E402
-from thread_manager import (  # noqa: E402
+from src.db import SessionLocal, init_db  # noqa: E402
+from src.thread_manager import (  # noqa: E402
     add_message_to_thread,
     get_conversation_thread,
     reset_thread,

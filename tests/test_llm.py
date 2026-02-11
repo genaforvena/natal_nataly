@@ -9,15 +9,15 @@ Tests the LLM prompt formatting and interaction logic:
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from llm import call_llm
+from src.llm import call_llm
 
 
 @pytest.mark.unit
 class TestLLMIntegration:
     """Tests for LLM prompt formatting and API calls."""
 
-    @patch('llm.load_parser_prompt')
-    @patch('llm.client')
+    @patch('src.llm.load_parser_prompt')
+    @patch('src.llm.client')
     def test_call_llm_parser_prompt(self, mock_client, mock_load_parser):
         """Test calling LLM with a parser prompt (no personality)."""
         # Setup mock
