@@ -297,12 +297,12 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 ## Documentation
 
 - See [TESTING.md](TESTING.md) for CI/CD pipeline and testing guide
-- See [DOCKER.md](DOCKER.md) for comprehensive Docker deployment guide
-- See [SETUP.md](SETUP.md) for detailed manual setup instructions
-- See [TEST_PAYLOADS.md](TEST_PAYLOADS.md) for testing examples
-- See [STATEFUL_BOT_GUIDE.md](STATEFUL_BOT_GUIDE.md) for implementation details
-- See [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for architecture overview
-- See [DEBUG_MODE.md](DEBUG_MODE.md) for debug mode and developer commands
+- See [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md) for comprehensive Docker deployment guide
+- See [docs/SETUP.md](docs/SETUP.md) for detailed manual setup instructions
+- See [docs/TEST_PAYLOADS.md](docs/TEST_PAYLOADS.md) for testing examples
+- See [docs/guides/STATEFUL_BOT_GUIDE.md](docs/guides/STATEFUL_BOT_GUIDE.md) for implementation details
+- See [docs/guides/DEBUG_MODE.md](docs/guides/DEBUG_MODE.md) for debug mode and developer commands
+- See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for project organization
 
 ## Debug Mode (Developer Tools)
 
@@ -331,4 +331,4 @@ DEVELOPER_TELEGRAM_ID=your_telegram_id
 - **LLM Prompt Tracking**: Stores prompt name, hash, and model for reproducibility
 - **SVG Visualization**: Generates visual natal chart for verification
 
-See [DEBUG_MODE.md](DEBUG_MODE.md) for complete documentation.
+See [docs/guides/DEBUG_MODE.md](docs/guides/DEBUG_MODE.md) for complete documentation.
