@@ -178,12 +178,79 @@ jobs:
       
       - name: Test Docker image
         run: |
-          # Run container with test environment
+          # Test 1: Check Python import works
+          echo "Test 1: Checking module imports..."
           docker run --rm \
             -e TELEGRAM_BOT_TOKEN=test_token \
             -e LLM_PROVIDER=groq \
             -e GROQ_API_KEY=test_key \
-            natal-nataly:test python -c "from src import main; print('Import successful')"
+            natal-nataly:test python -c "from src import main; print('✓ Import successful')"
+          
+          # Test 2: Check that the application can start (will fail without webhook but structure is correct)
+          echo "Test 2: Checking application startup..."
+          docker run --rm \
+            -e TELEGRAM_BOT_TOKEN=test_token \
+            -e LLM_PROVIDER=groq \
+            -e GROQ_API_KEY=test_key \
+            natal-nataly:test python -c "from src.main import app; print('✓ FastAPI app initialized')"
+          
+          # Test 3: Verify all critical modules can be imported
+          echo "Test 3: Checking all critical module imports..."
+          docker run --rm \
+            -e TELEGRAM_BOT_TOKEN=test_token \
+            -e LLM_PROVIDER=groq \
+            -e GROQ_API_KEY=test_key \
+            natal-nataly:test python -c "
+from src.bot import handle_telegram_update
+from src.db import init_db
+from src.models import User
+from src.llm import call_llm
+from src.services.chart_builder import build_natal_chart_text_and_json
+print('✓ All critical modules imported successfully')
+"
+          
+          # Test 4: Check directory structure inside container
+          echo "Test 4: Verifying container directory structure..."
+          docker run --rm natal-nataly:test sh -c "
+            echo 'Checking /app structure:' &&
+            ls -la /app &&
+            echo '' &&
+            echo 'Checking /app/src:' &&
+            ls -la /app/src &&
+            echo '' &&
+            echo '✓ Directory structure correct'
+          "
+          
+          # Test 5: Start server briefly and check it responds
+          echo "Test 5: Testing server startup..."
+          docker run --rm -d \
+            --name natal-nataly-test \
+            -e TELEGRAM_BOT_TOKEN=test_token \
+            -e LLM_PROVIDER=groq \
+            -e GROQ_API_KEY=test_key \
+            -p 8001:8000 \
+            natal-nataly:test
+          
+          # Wait for server to start
+          sleep 5
+          
+          # Check health endpoint
+          if curl -f http://localhost:8001/health; then
+            echo "✓ Server health check passed"
+          else
+            echo "✗ Server health check failed"
+            docker logs natal-nataly-test
+            docker stop natal-nataly-test
+            exit 1
+          fi
+          
+          # Stop the container
+          docker stop natal-nataly-test
+          
+          echo ""
+          echo "=========================================="
+          echo "All Docker tests passed! ✓"
+          echo "=========================================="
 
   security-scan:
     name: Security Scan

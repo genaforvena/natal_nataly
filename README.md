@@ -296,7 +296,8 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 
 ## Documentation
 
-- See [TESTING.md](TESTING.md) for CI/CD pipeline and testing guide
+- See [docs/DOCKER_TESTING.md](docs/DOCKER_TESTING.md) for Docker deployment testing guide
+- See [docs/guides/TESTING.md](docs/guides/TESTING.md) for CI/CD pipeline and testing guide
 - See [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md) for comprehensive Docker deployment guide
 - See [docs/SETUP.md](docs/SETUP.md) for detailed manual setup instructions
 - See [docs/TEST_PAYLOADS.md](docs/TEST_PAYLOADS.md) for testing examples
