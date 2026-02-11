@@ -4,6 +4,7 @@ Calculates current or future transits relative to natal chart.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Dict, Any
 from kerykeion import AstrologicalSubject
@@ -84,7 +85,6 @@ def build_transits(
         original_input = natal_chart_json.get("original_input", "")
         
         # Try to extract coordinates from original_input
-        import re
         lat_match = re.search(r'Lat:\s*([-+]?\d+\.?\d*)', original_input)
         lng_match = re.search(r'Lng:\s*([-+]?\d+\.?\d*)', original_input)
         

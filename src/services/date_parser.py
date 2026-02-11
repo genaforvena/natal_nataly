@@ -5,6 +5,7 @@ Uses LLM to extract dates from natural language, similar to birth data extractio
 
 import logging
 from datetime import datetime, timezone, timedelta
+from src.llm import extract_transit_date
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,6 @@ def parse_transit_date(text: str) -> datetime:
     Returns:
         datetime object in UTC timezone. Defaults to current UTC if no date found.
     """
-    from llm import extract_transit_date
-    
     logger.debug(f"Parsing transit date from text: {text[:100]}...")
     
     try:

@@ -10,7 +10,9 @@ from src.llm import (
     generate_clarification_question,
     interpret_chart,
     classify_intent,
-    generate_assistant_response
+    generate_assistant_response,
+    interpret_transits,
+    MODEL
 )
 from src.db import SessionLocal
 from src.models import User, BirthData, Reading, AstroProfile, UserNatalChart
@@ -39,6 +41,11 @@ from scripts.debug import (
 from scripts.debug_commands import handle_debug_command
 from src.user_commands import handle_user_command
 from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIGINAL_INPUT_LENGTH
+from src.thread_manager import add_message_to_thread, get_conversation_thread, reset_thread, get_thread_summary
+from src.services.date_parser import parse_transit_date
+from src.services.transit_builder import build_transits, format_transits_for_llm
+from src.services.intent_router import detect_request_type
+from src.prompt_loader import load_response_prompt
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1032,9 +1039,6 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
     logger.info(f"Handling chatting_about_chart for user {user.telegram_id}")
     
     try:
-        # Import thread manager functions
-        from src.thread_manager import add_message_to_thread, get_conversation_thread
-        
         # First, try to get chart from unified UserNatalChart table (source of truth)
         user_chart = session.query(UserNatalChart).filter_by(
             telegram_id=user.telegram_id,
@@ -1170,8 +1174,6 @@ async def handle_reset_thread_command(session, user: User, chat_id: int):
     logger.info(f"Handling /reset_thread command for user {user.telegram_id}")
     
     try:
-        from src.thread_manager import reset_thread, get_thread_summary
-        
         # Get thread summary before reset (for logging)
         summary = get_thread_summary(session, user.telegram_id)
         logger.info(f"Thread before reset: {summary}")
@@ -1280,19 +1282,16 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
                 chart = json.loads(profile.natal_chart_json)
         
         # Parse transit date from user's message
-        from src.services.date_parser import parse_transit_date
         transit_date = parse_transit_date(text)
         logger.info(f"Parsed transit date: {transit_date.isoformat()}")
         
         # Calculate transits
-        from src.services.transit_builder import build_transits, format_transits_for_llm
         transits = build_transits(chart, transit_date)
         transits_text = format_transits_for_llm(transits)
         
         logger.info("Transits calculated successfully")
         
         # Get LLM interpretation
-        from llm import interpret_transits
         reading = interpret_transits(chart, transits_text, text)
         
         # Save reading to database
@@ -1300,8 +1299,6 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         reading_id = reading_record.id
         
         # Track LLM prompt for reproducibility
-        from llm import MODEL
-        from prompt_loader import load_response_prompt
         try:
             # Load the response prompt used for transit interpretation
             prompt_content = load_response_prompt("transit_reading")
@@ -1356,7 +1353,6 @@ async def route_message(session, user: User, chat_id: int, text: str):
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
             # Use LLM-based intent detection
-            from src.services.intent_router import detect_request_type
             intent_type = detect_request_type(text)
             
             logger.info(f"Intent detected: {intent_type}")
