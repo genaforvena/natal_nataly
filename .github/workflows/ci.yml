@@ -48,7 +48,7 @@ jobs:
       
       - name: Run flake8
         run: |
-          flake8 . --count --statistics --show-source
+          flake8 src/ tests/ scripts/ --count --statistics --show-source
         continue-on-error: false
 
   type-check:
@@ -82,7 +82,7 @@ jobs:
       
       - name: Run mypy
         run: |
-          mypy . --config-file mypy.ini
+          mypy src/ --config-file mypy.ini
         continue-on-error: true  # Type checking is advisory for now
 
   test:
@@ -124,6 +124,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: test_token
           LLM_PROVIDER: groq
           GROQ_API_KEY: test_key
+          PYTHONPATH: .
       
       - name: Run integration tests
         run: |
@@ -132,14 +133,16 @@ jobs:
           TELEGRAM_BOT_TOKEN: test_token
           LLM_PROVIDER: groq
           GROQ_API_KEY: test_key
+          PYTHONPATH: .
       
       - name: Run all tests with coverage
         run: |
-          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing --cov-report=html
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing --cov-report=html
         env:
           TELEGRAM_BOT_TOKEN: test_token
           LLM_PROVIDER: groq
           GROQ_API_KEY: test_key
+          PYTHONPATH: .
       
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
@@ -180,7 +183,7 @@ jobs:
             -e TELEGRAM_BOT_TOKEN=test_token \
             -e LLM_PROVIDER=groq \
             -e GROQ_API_KEY=test_key \
-            natal-nataly:test python -c "import main; print('Import successful')"
+            natal-nataly:test python -c "from src import main; print('Import successful')"
 
   security-scan:
     name: Security Scan
