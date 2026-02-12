@@ -163,7 +163,8 @@ def extract_birth_data(text: str, conversation_history: list = None) -> dict:
         conversation_history: Optional list of previous messages to accumulate data from
     
     Returns:
-        dict with keys: dob, time, lat, lng, missing_fields
+        dict with keys: dob, time, lat, lng, location, original_input, 
+                       normalized_input, missing_fields
     """
     logger.debug(f"extract_birth_data called with message length: {len(text)}")
     if conversation_history:
@@ -206,6 +207,11 @@ def extract_birth_data(text: str, conversation_history: list = None) -> dict:
         
         birth_data = json.loads(result)
         logger.info(f"Birth data extracted successfully: missing_fields={birth_data.get('missing_fields', [])}")
+        
+        # Log normalization info
+        if 'original_input' in birth_data and 'normalized_input' in birth_data:
+            logger.info(f"Original: {birth_data['original_input'][:100]}...")
+            logger.info(f"Normalized: {birth_data['normalized_input'][:100]}...")
         
         return birth_data
     except json.JSONDecodeError as e:
