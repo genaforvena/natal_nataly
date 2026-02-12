@@ -438,4 +438,3 @@ class TestIntentRouting:
         
         # Verify routing
         assert result == "natal_question"
-
