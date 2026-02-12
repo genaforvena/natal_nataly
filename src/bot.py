@@ -654,8 +654,13 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             # Update state to awaiting_clarification
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(missing))
             
-            # Generate clarification question with conversation context and user profile
-            question = generate_clarification_question(missing, text, conversation_history=conversation_history, user_profile=user_profile)
+            # Generate clarification question with conversation context
+            # and user profile
+            question = generate_clarification_question(
+                missing, text,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            )
             await send_telegram_message(chat_id, question)
             return
         
@@ -991,7 +996,11 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
             # Ask again with conversation context and user profile
-            question = generate_clarification_question(still_missing, text, conversation_history=conversation_history, user_profile=user_profile)
+            question = generate_clarification_question(
+                still_missing, text,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            )
             response = await send_telegram_message(chat_id, question)
             if response is None:
                 logger.warning(f"Could not send clarification question to chat_id={chat_id}, chat may be invalid")
@@ -1104,7 +1113,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         prompt_name = "assistant_response"
         if user.assistant_mode:
             logger.info("Using assistant mode for response")
-            reading = generate_assistant_response(context, text, conversation_history=conversation_history, user_profile=user_profile)
+            reading = generate_assistant_response(
+                context, text,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            )
         else:
             # Fallback to legacy interpret_chart
             logger.info("Using legacy chart interpretation")

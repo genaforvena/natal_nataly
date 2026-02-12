@@ -193,7 +193,12 @@ def extract_birth_data(text: str) -> dict:
         raise
 
 
-def generate_clarification_question(missing_fields: list, user_message: str, conversation_history: list = None, user_profile: str = None) -> str:
+def generate_clarification_question(
+    missing_fields: list,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Generate a friendly clarification question for missing birth data fields.
     Uses RESPONSE prompt (with personality layer).
@@ -336,7 +341,12 @@ def classify_intent(text: str) -> dict:
         return {"intent": "unknown", "confidence": 0.0}
 
 
-def generate_assistant_response(context: dict, user_message: str, conversation_history: list = None, user_profile: str = None) -> str:
+def generate_assistant_response(
+    context: dict,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Generate assistant-style response using personality and astrology knowledge.
     
@@ -378,7 +388,13 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
         raise
 
 
-def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str, conversation_history: list = None, user_profile: str = None) -> str:
+def interpret_transits(
+    natal_chart_json: dict,
+    transits_text: str,
+    user_question: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Interpret transits in the context of the natal chart.
     Uses RESPONSE prompt (with personality layer).

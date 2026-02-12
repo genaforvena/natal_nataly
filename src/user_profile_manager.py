@@ -126,7 +126,7 @@ Assistant: {latest_assistant_response[:500]}{'...' if len(latest_assistant_respo
 """
         
         if conversation_history and len(conversation_history) > 2:
-            prompt += f"""CONVERSATION CONTEXT (last few messages):
+            prompt += """CONVERSATION CONTEXT (last few messages):
 """
             # Limit to last 4 messages to keep prompt manageable
             for msg in conversation_history[-4:]:
