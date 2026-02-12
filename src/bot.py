@@ -1247,9 +1247,12 @@ async def handle_change_profile(session, user: User, chat_id: int, text: str):
         text_lower = text.lower()
         target_profile = None
         
-        # Check for "self" or "my" keywords
-        if any(word in text_lower for word in ["мою карту", "свой профиль", "себя", "мне", "я"]):
-            # Find self profile
+        # Check for "self" or "my" keywords with word boundary matching
+        # Use more precise patterns to avoid false positives
+        self_keywords = ["мою карту", "свой профиль", "мой профиль", "себя"]
+        # Check for whole-word matches to avoid substring false positives
+        if any(keyword in text_lower for keyword in self_keywords):
+            # Find self profile (profile_type="self" or name is None)
             for profile in profiles:
                 if profile.profile_type == "self" or profile.name is None:
                     target_profile = profile
@@ -1268,8 +1271,9 @@ async def handle_change_profile(session, user: User, chat_id: int, text: str):
             for profile in profiles:
                 is_active = (profile.id == user.active_profile_id)
                 indicator = "✅ " if is_active else "   "
+                # Display name or "Ты (self)" for self profile
+                # Self profile is identified by profile_type="self" or name=None
                 name = profile.name or "Ты (self)"
-                profile_type = profile.profile_type
                 message += f"{indicator}{name}\n"
             message += "\nСкажи: 'переключись на [имя]' или 'покажи мой профиль'"
             

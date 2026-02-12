@@ -15,8 +15,10 @@ Additionally, you must provide both the original input and a normalized version.
 5. Return ONLY valid JSON, no explanations or additional text
 6. If a field cannot be determined, set it to null
 7. **IMPORTANT: When conversation history is provided, accumulate data from previous messages. If date/location was mentioned in earlier messages and current message provides time, combine all available information.**
-8. original_input: Keep exact user text (or accumulated context if multi-turn)
-9. normalized_input: Provide cleaned, standardized version in format: "DOB: YYYY-MM-DD, Time: HH:MM, Location: [place name] (lat, lng)"
+8. **original_input format:**
+   - For single message: Use exact user text as-is
+   - For multi-turn conversations: Format as "First message: '[text]', Current: '[text]'" to show data accumulation
+9. **normalized_input:** Provide cleaned, standardized version in format: "DOB: YYYY-MM-DD, Time: HH:MM, Location: [place name] (lat, lng)"
 
 ## OUTPUT FORMAT (strict JSON)
 ```json

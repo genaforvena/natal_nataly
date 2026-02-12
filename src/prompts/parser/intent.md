@@ -72,8 +72,11 @@ Additionally, you must normalize the user's prompt by cleaning it up and standar
 **Input:** "Переключись на профиль Маши"
 **Output:** {{"intent": "change_profile", "confidence": 0.96, "original_prompt": "Переключись на профиль Маши", "normalized_prompt": "Сменить активный профиль на профиль Маши"}}
 
+**Input:** "Хочу посмотреть карту Маши"
+**Output:** {{"intent": "change_profile", "confidence": 0.88, "original_prompt": "Хочу посмотреть карту Маши", "normalized_prompt": "Переключиться на профиль Маши"}}
+
 **Input:** "Покажи мне мою карту"
-**Output:** {{"intent": "change_profile", "confidence": 0.85, "original_prompt": "Покажи мне мою карту", "normalized_prompt": "Переключиться на свой профиль (self)"}}
+**Output:** {{"intent": "ask_about_chart", "confidence": 0.85, "original_prompt": "Покажи мне мою карту", "normalized_prompt": "Показать информацию о моей натальной карте"}}
 
 **Input:** "fgjhfgjh"
 **Output:** {{"intent": "unknown", "confidence": 0.50, "original_prompt": "fgjhfgjh", "normalized_prompt": "Непонятный ввод"}}
