@@ -7,6 +7,7 @@ Tests the LLM prompt formatting and interaction logic:
 - Response parsing
 """
 
+import json
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from src.llm import call_llm
@@ -267,3 +268,173 @@ class TestLLMHelperFunctions:
         # Verify result
         assert result['dob'] == "1990-05-15"
         assert result['time'] == "14:30"
+
+
+@pytest.mark.unit
+class TestEnhancedIntentParsing:
+    """Tests for enhanced intent parsing with normalization."""
+
+    @patch('src.llm.call_llm')
+    def test_classify_intent_returns_normalized_output(self, mock_call_llm):
+        """Test that classify_intent returns original and normalized prompts."""
+        from src.llm import classify_intent
+        
+        # Mock LLM response with new structure
+        mock_call_llm.return_value = json.dumps({
+            "intent": "provide_birth_data",
+            "confidence": 0.98,
+            "original_prompt": "Я родился 15 мая 1990 года в 14:30 в Москве",
+            "normalized_prompt": "Дата рождения: 15 мая 1990, время: 14:30, место: Москва"
+        })
+        
+        # Call function
+        result = classify_intent("Я родился 15 мая 1990 года в 14:30 в Москве")
+        
+        # Verify structure
+        assert result['intent'] == "provide_birth_data"
+        assert result['confidence'] == 0.98
+        assert 'original_prompt' in result
+        assert 'normalized_prompt' in result
+        assert result['original_prompt'] == "Я родился 15 мая 1990 года в 14:30 в Москве"
+        assert "Дата рождения: 15 мая 1990" in result['normalized_prompt']
+
+    @patch('src.llm.call_llm')
+    def test_classify_intent_change_profile(self, mock_call_llm):
+        """Test that change_profile intent is properly classified."""
+        from src.llm import classify_intent
+        
+        # Mock LLM response for change_profile intent
+        mock_call_llm.return_value = json.dumps({
+            "intent": "change_profile",
+            "confidence": 0.96,
+            "original_prompt": "Переключись на профиль Маши",
+            "normalized_prompt": "Сменить активный профиль на профиль Маши"
+        })
+        
+        # Call function
+        result = classify_intent("Переключись на профиль Маши")
+        
+        # Verify intent
+        assert result['intent'] == "change_profile"
+        assert result['confidence'] >= 0.9
+        assert 'normalized_prompt' in result
+
+    @patch('src.llm.call_llm')
+    def test_extract_birth_data_returns_normalized_fields(self, mock_call_llm):
+        """Test that extract_birth_data returns original and normalized inputs."""
+        from src.llm import extract_birth_data
+        
+        # Mock LLM response with new structure
+        mock_call_llm.return_value = json.dumps({
+            "dob": "1990-05-15",
+            "time": "14:30",
+            "lat": 40.7128,
+            "lng": -74.0060,
+            "location": "New York",
+            "original_input": "I was born on May 15, 1990 at 2:30 PM in New York",
+            "normalized_input": "DOB: 1990-05-15, Time: 14:30, Location: New York (40.7128, -74.0060)",
+            "missing_fields": []
+        })
+        
+        # Call function
+        result = extract_birth_data("I was born on May 15, 1990 at 2:30 PM in New York")
+        
+        # Verify structure
+        assert result['dob'] == "1990-05-15"
+        assert result['time'] == "14:30"
+        assert 'location' in result
+        assert result['location'] == "New York"
+        assert 'original_input' in result
+        assert 'normalized_input' in result
+        assert "I was born" in result['original_input']
+        assert "DOB: 1990-05-15" in result['normalized_input']
+
+    @patch('src.llm.call_llm')
+    def test_extract_birth_data_with_missing_fields(self, mock_call_llm):
+        """Test normalization when some fields are missing."""
+        from src.llm import extract_birth_data
+        
+        # Mock LLM response with missing time
+        mock_call_llm.return_value = json.dumps({
+            "dob": "1985-03-20",
+            "time": None,
+            "lat": 55.7558,
+            "lng": 37.6173,
+            "location": "Moscow",
+            "original_input": "Born 1985-03-20, morning, Moscow",
+            "normalized_input": "DOB: 1985-03-20, Time: unknown (morning), Location: Moscow (55.7558, 37.6173)",
+            "missing_fields": ["time"]
+        })
+        
+        # Call function
+        result = extract_birth_data("Born 1985-03-20, morning, Moscow")
+        
+        # Verify structure
+        assert result['dob'] == "1985-03-20"
+        assert result['time'] is None
+        assert result['missing_fields'] == ["time"]
+        assert 'original_input' in result
+        assert 'normalized_input' in result
+        assert "morning" in result['original_input']
+
+
+@pytest.mark.unit
+class TestIntentRouting:
+    """Tests for intent routing with change_profile support."""
+
+    @patch('src.services.intent_router.classify_intent')
+    def test_detect_request_type_change_profile(self, mock_classify):
+        """Test that change_profile intent is properly routed."""
+        from src.services.intent_router import detect_request_type
+        
+        # Mock classify_intent to return change_profile
+        mock_classify.return_value = {
+            "intent": "change_profile",
+            "confidence": 0.96,
+            "original_prompt": "Переключись на профиль Маши",
+            "normalized_prompt": "Сменить активный профиль на профиль Маши"
+        }
+        
+        # Call function
+        result = detect_request_type("Переключись на профиль Маши")
+        
+        # Verify routing
+        assert result == "change_profile"
+
+    @patch('src.services.intent_router.classify_intent')
+    def test_detect_request_type_birth_input(self, mock_classify):
+        """Test that provide_birth_data is routed to birth_input."""
+        from src.services.intent_router import detect_request_type
+        
+        # Mock classify_intent
+        mock_classify.return_value = {
+            "intent": "provide_birth_data",
+            "confidence": 0.98,
+            "original_prompt": "Я родился 15 мая 1990",
+            "normalized_prompt": "Дата рождения: 15 мая 1990"
+        }
+        
+        # Call function
+        result = detect_request_type("Я родился 15 мая 1990")
+        
+        # Verify routing
+        assert result == "birth_input"
+
+    @patch('src.services.intent_router.classify_intent')
+    def test_detect_request_type_natal_question_fallback(self, mock_classify):
+        """Test that other intents are routed to natal_question."""
+        from src.services.intent_router import detect_request_type
+        
+        # Mock classify_intent
+        mock_classify.return_value = {
+            "intent": "ask_about_chart",
+            "confidence": 0.90,
+            "original_prompt": "Почему я такой упрямый?",
+            "normalized_prompt": "Почему я обладаю упрямством?"
+        }
+        
+        # Call function
+        result = detect_request_type("Почему я такой упрямый?")
+        
+        # Verify routing
+        assert result == "natal_question"

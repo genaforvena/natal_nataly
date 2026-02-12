@@ -1215,6 +1215,106 @@ async def handle_profiles_command(session, user: User, chat_id: int):
             logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
 
 
+async def handle_change_profile(session, user: User, chat_id: int, text: str):
+    """
+    Handle profile switching based on user's natural language request.
+    Uses LLM to extract profile name from user's message.
+    """
+    logger.info(f"Handling change_profile intent for user {user.telegram_id}")
+    
+    try:
+        # Get all user profiles
+        profiles = list_user_profiles(session, user.telegram_id)
+        
+        if not profiles:
+            await send_telegram_message(
+                chat_id,
+                "У тебя пока нет профилей. Отправь данные рождения, чтобы создать первый профиль."
+            )
+            return
+        
+        # If user only has one profile, nothing to switch to
+        if len(profiles) == 1:
+            await send_telegram_message(
+                chat_id,
+                "У тебя только один профиль. Создай дополнительные профили, "
+                "отправив данные рождения для других людей (партнер, друг, и т.д.)."
+            )
+            return
+        
+        # Extract profile name/type from user message using simple keyword matching
+        # (We could use LLM here too, but simple matching is sufficient)
+        text_lower = text.lower()
+        target_profile = None
+        
+        # Check for "self" or "my" keywords with word boundary matching
+        # Use more precise patterns to avoid false positives
+        self_keywords = ["мою карту", "свой профиль", "мой профиль", "себя"]
+        # Check for whole-word matches to avoid substring false positives
+        if any(keyword in text_lower for keyword in self_keywords):
+            # Find self profile (profile_type="self" or name is None)
+            for profile in profiles:
+                if profile.profile_type == "self" or profile.name is None:
+                    target_profile = profile
+                    break
+        else:
+            # Try to match profile name
+            for profile in profiles:
+                if profile.name and profile.name.lower() in text_lower:
+                    target_profile = profile
+                    break
+        
+        # If no match found, show profile list
+        if not target_profile:
+            message = "🤔 Не могу понять, на какой профиль переключиться.\n\n"
+            message += "Твои профили:\n"
+            for profile in profiles:
+                is_active = (profile.id == user.active_profile_id)
+                indicator = "✅ " if is_active else "   "
+                # Display name or "Ты (self)" for self profile
+                # Self profile is identified by profile_type="self" or name=None
+                name = profile.name or "Ты (self)"
+                message += f"{indicator}{name}\n"
+            message += "\nСкажи: 'переключись на [имя]' или 'покажи мой профиль'"
+            
+            await send_telegram_message(chat_id, message)
+            return
+        
+        # Check if already active
+        if target_profile.id == user.active_profile_id:
+            name = target_profile.name or "твой профиль"
+            await send_telegram_message(
+                chat_id,
+                f"✅ {name.capitalize()} уже активен!"
+            )
+            return
+        
+        # Switch to target profile
+        set_active_profile(session, user, target_profile.id)
+        
+        # Confirm switch
+        name = target_profile.name or "Твой профиль (self)"
+        await send_telegram_message(
+            chat_id,
+            f"✅ Переключился на профиль: {name}\n\n"
+            "Теперь все вопросы будут относиться к этому профилю."
+        )
+        
+        logger.info(f"Successfully switched to profile {target_profile.id} for user {user.telegram_id}")
+        
+    except Exception as e:
+        logger.exception(f"Error handling change_profile: {e}")
+        try:
+            response = await send_telegram_message(
+                chat_id,
+                "Произошла ошибка при переключении профиля. Используй команду /profiles для просмотра списка профилей."
+            )
+            if response is None:
+                logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
+
+
 async def handle_reset_thread_command(session, user: User, chat_id: int):
     """Handle /reset_thread command to clear conversation history"""
     logger.info(f"Handling /reset_thread command for user {user.telegram_id}")
@@ -1409,6 +1509,11 @@ async def route_message(session, user: User, chat_id: int, text: str):
                 logger.info("User providing new birth data, switching to awaiting_birth_data state")
                 update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
                 await handle_awaiting_birth_data(session, user, chat_id, text)
+                
+            elif intent_type == "change_profile":
+                # User wants to switch profiles
+                logger.info("User wants to change profile")
+                await handle_change_profile(session, user, chat_id, text)
                 
             elif intent_type == "natal_question":
                 # User asking about their natal chart
