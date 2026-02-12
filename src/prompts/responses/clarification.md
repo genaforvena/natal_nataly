@@ -4,7 +4,7 @@ required_blocks:
   - user_message
 output_style: brief
 sections:
-  - clarification_question
+  - question
   - context_acknowledgment
 ---
 

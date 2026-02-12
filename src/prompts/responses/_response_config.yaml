@@ -25,7 +25,7 @@ assistant_chat:
 
 clarification:
   include_sections:
-    - clarification_question
+    - question
     - context_acknowledgment
   output_style: brief
   apply_personality: true
