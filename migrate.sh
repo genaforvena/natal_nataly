@@ -19,7 +19,9 @@ if [ ! -f .env ]; then
 fi
 
 # Load environment variables
-export $(grep -v '^#' .env | xargs)
+set -a
+source .env
+set +a
 
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
