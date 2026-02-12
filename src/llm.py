@@ -36,14 +36,16 @@ def call_llm(
     variables: dict,
     temperature: float = 0.7,
     is_parser: bool = None,
-    conversation_history: list = None
+    conversation_history: list = None,
+    current_user_message: str = None,
+    user_profile: str = None
 ) -> str:
     """
     Universal LLM call function with new prompt architecture.
     
     This function automatically determines if the prompt is a parser or response type,
     loads the appropriate prompt (with or without personality), renders variables,
-    and makes the LLM API call.
+    injects user profile context, and makes the LLM API call.
     
     Args:
         prompt_type: Prompt identifier, e.g., "parser/intent", "responses/natal_reading"
@@ -51,6 +53,8 @@ def call_llm(
         temperature: Temperature for LLM sampling (default 0.7)
         is_parser: Explicitly set if this is a parser prompt (optional, auto-detected from prompt_type)
         conversation_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
+        current_user_message: The current user message (deprecated, kept for compatibility)
+        user_profile: LLM-maintained user profile document to inject into response prompts
         
     Returns:
         String response from LLM
@@ -59,7 +63,9 @@ def call_llm(
         call_llm(
             prompt_type="responses/natal_reading",
             variables={"chart_json": chart_data},
-            temperature=0.7
+            temperature=0.7,
+            conversation_history=history,
+            user_profile="Пользователь предпочитает краткие ответы..."
         )
     """
     logger.debug(f"call_llm invoked with prompt_type={prompt_type}")
@@ -80,6 +86,26 @@ def call_llm(
             prompt_name = prompt_type.replace("responses/", "").replace("/responses/", "")
             prompt_template = load_response_prompt(prompt_name)
             logger.info(f"Loaded RESPONSE prompt: {prompt_name} (WITH personality)")
+            
+            # For response prompts, inject user profile if available
+            # The user profile is an LLM-maintained document that captures user preferences,
+            # communication style, interests, and context. This replaces the old string-parsing
+            # approach with a more natural, LLM-driven understanding of user expectations.
+            if user_profile:
+                profile_context = f"""
+=== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ===
+
+{user_profile}
+
+ВАЖНО: Используй этот профиль для персонализации ответа. Адаптируй тон, глубину 
+и фокус анализа под стиль общения и интересы пользователя.
+
+============================================
+
+"""
+                # Prepend profile with double newline for clear visual separation
+                prompt_template = profile_context + "\n\n" + prompt_template
+                logger.info("Injected user profile context into response prompt")
         
         # Render variables into the template
         try:
@@ -167,7 +193,12 @@ def extract_birth_data(text: str) -> dict:
         raise
 
 
-def generate_clarification_question(missing_fields: list, user_message: str) -> str:
+def generate_clarification_question(
+    missing_fields: list,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Generate a friendly clarification question for missing birth data fields.
     Uses RESPONSE prompt (with personality layer).
@@ -175,6 +206,8 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
     Args:
         missing_fields: List of missing field names
         user_message: The user's previous message
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
         
     Returns:
         String with clarification question
@@ -189,7 +222,9 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
                 "user_message": user_message
             },
             temperature=0.7,  # Moderate temperature for natural language
-            is_parser=False
+            is_parser=False,
+            conversation_history=conversation_history,
+            user_profile=user_profile  # Pass user profile for personalization
         )
         
         logger.info(f"Clarification question generated, length: {len(result)} characters")
@@ -200,7 +235,7 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
         raise
 
 
-def interpret_chart(chart_json: dict, question: str = None, conversation_history: list = None) -> str:
+def interpret_chart(chart_json: dict, question: str = None, conversation_history: list = None, user_profile: str = None) -> str:
     """
     Interpret natal chart using LLM.
     
@@ -208,6 +243,7 @@ def interpret_chart(chart_json: dict, question: str = None, conversation_history
         chart_json: The natal chart data
         question: Optional user question for conversational mode
         conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
         
     Returns:
         String interpretation
@@ -227,7 +263,8 @@ def interpret_chart(chart_json: dict, question: str = None, conversation_history
                 },
                 temperature=0.7,
                 is_parser=False,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                user_profile=user_profile  # Pass user profile for personalization
             )
         else:
             # Initial reading mode - full chart interpretation
@@ -238,7 +275,9 @@ def interpret_chart(chart_json: dict, question: str = None, conversation_history
                     "chart_json": chart_str
                 },
                 temperature=0.7,
-                is_parser=False
+                is_parser=False,
+                conversation_history=conversation_history,
+                user_profile=user_profile  # Pass user profile for personalization
             )
         
         logger.info(f"LLM API call successful, response length: {len(result)} characters")
@@ -302,7 +341,12 @@ def classify_intent(text: str) -> dict:
         return {"intent": "unknown", "confidence": 0.0}
 
 
-def generate_assistant_response(context: dict, user_message: str, conversation_history: list = None) -> str:
+def generate_assistant_response(
+    context: dict,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Generate assistant-style response using personality and astrology knowledge.
     
@@ -310,6 +354,7 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
         context: Dict with natal_chart, profile_name, recent_questions, etc.
         user_message: The user's current message
         conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
         
     Returns:
         String response from assistant
@@ -331,7 +376,8 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
             },
             temperature=0.7,  # Moderate temperature for natural conversation
             is_parser=False,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            user_profile=user_profile  # Pass user profile for personalization
         )
         
         logger.info(f"Assistant response generated, length: {len(result)} characters")
@@ -342,7 +388,13 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
         raise
 
 
-def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str) -> str:
+def interpret_transits(
+    natal_chart_json: dict,
+    transits_text: str,
+    user_question: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
     """
     Interpret transits in the context of the natal chart.
     Uses RESPONSE prompt (with personality layer).
@@ -351,6 +403,8 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
         natal_chart_json: User's natal chart data
         transits_text: Formatted transit data (from format_transits_for_llm)
         user_question: User's original question
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
         
     Returns:
         String interpretation of transits
@@ -370,7 +424,9 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
                 "question": user_question
             },
             temperature=0.7,
-            is_parser=False
+            is_parser=False,
+            conversation_history=conversation_history,
+            user_profile=user_profile  # Pass user profile for personalization
         )
         
         logger.info(f"Transit interpretation generated, length: {len(result)} characters")
