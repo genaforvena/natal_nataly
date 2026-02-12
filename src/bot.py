@@ -632,8 +632,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     # Get conversation history and user profile for context
     conversation_history = get_conversation_thread(session, user.telegram_id)
     from src.user_profile_manager import UserProfileManager
-    profile_manager = UserProfileManager()
-    user_profile = profile_manager.get_user_profile(session, user.telegram_id)
+    user_profile = UserProfileManager.get_user_profile(session, user.telegram_id)
     
     # Stage 1: Log raw input
     session_id = log_pipeline_stage_1_raw_input(user.telegram_id, text)
@@ -973,8 +972,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     # Get conversation history and user profile for context
     conversation_history = get_conversation_thread(session, user.telegram_id)
     from src.user_profile_manager import UserProfileManager
-    profile_manager = UserProfileManager()
-    user_profile = profile_manager.get_user_profile(session, user.telegram_id)
+    user_profile = UserProfileManager.get_user_profile(session, user.telegram_id)
     
     try:
         # Extract data again from the clarification message
@@ -1094,8 +1092,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         
         # Get user profile for personalization
         from src.user_profile_manager import UserProfileManager
-        profile_manager = UserProfileManager()
-        user_profile = profile_manager.get_user_profile(session, user.telegram_id)
+        user_profile = UserProfileManager.get_user_profile(session, user.telegram_id)
         if user_profile:
             logger.info(f"Using user profile for personalization: {len(user_profile)} chars")
         

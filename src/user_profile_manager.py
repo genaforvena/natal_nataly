@@ -170,11 +170,10 @@ def update_profile_after_interaction(
     
     try:
         # Get current profile
-        manager = UserProfileManager()
-        current_profile = manager.get_user_profile(session, telegram_id)
+        current_profile = UserProfileManager.get_user_profile(session, telegram_id)
         
         # Build prompt for profile update
-        prompt = manager.build_profile_prompt(
+        prompt = UserProfileManager.build_profile_prompt(
             current_profile=current_profile,
             conversation_history=conversation_history,
             latest_user_message=latest_user_message,
@@ -190,7 +189,7 @@ def update_profile_after_interaction(
         )
         
         # Save updated profile
-        manager.update_user_profile(session, telegram_id, updated_profile.strip())
+        UserProfileManager.update_user_profile(session, telegram_id, updated_profile.strip())
         
         logger.info(f"Profile update completed for user {telegram_id}")
         
