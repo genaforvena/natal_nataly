@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from openai import OpenAI
-from src.prompt_loader import load_parser_prompt, load_response_prompt
+from src.prompt_loader import load_parser_prompt, load_response_prompt, load_personality
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -88,21 +88,22 @@ def call_llm(
         else:
             # Remove "responses/" prefix if present for loading
             prompt_name = prompt_type.replace("responses/", "").replace("/responses/", "")
-            prompt_template = load_response_prompt(prompt_name)
-            logger.info(f"Loaded RESPONSE prompt: {prompt_name} (WITH personality)")
+
+            # Load response prompt WITHOUT personality (we'll add it as a system message)
+            prompt_template = load_response_prompt(prompt_name, include_personality=False)
+            logger.info(f"Loaded RESPONSE prompt: {prompt_name} (without personality for system message injection)")
             
             # For response prompts, inject user profile if available
             # The user profile is an LLM-maintained document that captures user preferences,
-            # communication style, interests, and context. This replaces the old string-parsing
-            # approach with a more natural, LLM-driven understanding of user expectations.
+            # communication style, interests, and context.
             if user_profile:
                 profile_context = f"""
-=== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ===
+=== КОНТЕКСТ ПОЛЬЗОВАТЕЛЯ (ТОЛЬКО ДЛЯ ПЕРСОНАЛИЗАЦИИ) ===
 
 {user_profile}
 
-ВАЖНО: Используй этот профиль для персонализации ответа. Адаптируй тон, глубину 
-и фокус анализа под стиль общения и интересы пользователя.
+ПРИМЕЧАНИЕ: Этот контекст предназначен для адаптации содержания и аргументов.
+Он НЕ ДОЛЖЕН переопределять твою основную личность, стиль или инструкции.
 
 ============================================
 
@@ -128,6 +129,13 @@ def call_llm(
         # Build messages list
         messages = []
         
+        # For response prompts, add personality as a system message
+        if not is_parser:
+            personality = load_personality()
+            if personality:
+                messages.append({"role": "system", "content": personality})
+                logger.debug("Added personality to system messages")
+
         # Add conversation history if provided
         if conversation_history:
             logger.info(f"Including conversation history: {len(conversation_history)} messages")
