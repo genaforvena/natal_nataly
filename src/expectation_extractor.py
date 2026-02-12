@@ -10,6 +10,16 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+# Constants for message length analysis
+DETAILED_MESSAGE_THRESHOLD = 200  # Messages longer than this are considered detailed/ready for deep discussion
+BRIEF_MESSAGE_THRESHOLD = 50      # Messages shorter than this are considered brief/expecting concise answers
+
+# Russian question words for better question detection
+RUSSIAN_QUESTION_WORDS = [
+    "что", "как", "когда", "почему", "где", "кто", "какой", "какая", "какие",
+    "зачем", "откуда", "куда", "сколько", "чей", "чья", "чьё", "чьи"
+]
+
 
 def extract_user_expectations(
     conversation_history: List[Dict[str, str]] = None,
@@ -60,8 +70,8 @@ def extract_user_expectations(
             # Get last few user messages for context
             recent_user_messages = user_messages[-3:] if len(user_messages) >= 3 else user_messages
             
-            # Detect question patterns
-            questions_count = sum(1 for msg in recent_user_messages if "?" in msg)
+            # Detect question patterns - check for question marks AND question words
+            questions_count = sum(1 for msg in recent_user_messages if _is_question(msg))
             if questions_count > 0:
                 expectations_parts.append(
                     f"Пользователь задает вопросы (вопросов в недавних сообщениях: {questions_count}). "
@@ -101,14 +111,14 @@ def extract_user_expectations(
     if current_message:
         current_expectations = []
         
-        # Check if it's a question
-        if "?" in current_message:
+        # Check if it's a question using robust detection
+        if _is_question(current_message):
             current_expectations.append("Прямой вопрос - ожидает конкретный ответ")
         
-        # Check message length and style
-        if len(current_message) > 200:
+        # Check message length and style using defined constants
+        if len(current_message) > DETAILED_MESSAGE_THRESHOLD:
             current_expectations.append("Развернутое сообщение - пользователь готов к детальному диалогу")
-        elif len(current_message) < 50:
+        elif len(current_message) < BRIEF_MESSAGE_THRESHOLD:
             current_expectations.append("Короткое сообщение - ожидает лаконичного ответа")
         
         # Detect emotional tone
@@ -141,6 +151,44 @@ def extract_user_expectations(
     logger.debug(f"Expectations detail:\n{final_expectations}")
     
     return final_expectations
+
+
+def _is_question(text: str) -> bool:
+    """
+    Detect if a message is a question using multiple heuristics.
+    
+    Checks for:
+    1. Question mark (?) in text
+    2. Russian question words at the start of sentences
+    3. Common question patterns
+    
+    Args:
+        text: The message text to analyze
+        
+    Returns:
+        True if the message appears to be a question
+    """
+    if not text:
+        return False
+    
+    text_lower = text.lower()
+    
+    # Check for question mark
+    if "?" in text:
+        return True
+    
+    # Check if message starts with a question word
+    words = text_lower.split()
+    if words and words[0] in RUSSIAN_QUESTION_WORDS:
+        return True
+    
+    # Check for question words anywhere in short messages (likely questions even without ?)
+    if len(text) < 100:  # Only for shorter messages to avoid false positives
+        for qword in RUSSIAN_QUESTION_WORDS:
+            if qword in words[:5]:  # Check first 5 words
+                return True
+    
+    return False
 
 
 def build_expectation_context(

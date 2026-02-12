@@ -87,12 +87,16 @@ def call_llm(
             logger.info(f"Loaded RESPONSE prompt: {prompt_name} (WITH personality)")
             
             # For response prompts, inject user expectations from conversation context
+            # The expectation context is prepended to provide the LLM with insights about
+            # what the user is looking for based on conversation patterns and current message.
+            # This context block is designed to work with the existing prompt structure
+            # (personality layer + prompt content) without disrupting the flow.
             if conversation_history or current_user_message:
                 expectation_context = build_expectation_context(
                     conversation_history=conversation_history,
                     current_message=current_user_message
                 )
-                # Inject expectations before the main prompt content
+                # Prepend expectations with proper spacing to maintain prompt structure
                 prompt_template = expectation_context + "\n" + prompt_template
                 logger.info("Injected user expectations context into response prompt")
         
