@@ -46,12 +46,14 @@ class TestLLMIntegration:
         # Verify result
         assert result == "Parsed result"
 
+    @patch('src.llm.load_personality')
     @patch('src.llm.load_response_prompt')
     @patch('src.llm.client')
-    def test_call_llm_response_prompt(self, mock_client, mock_load_response):
+    def test_call_llm_response_prompt(self, mock_client, mock_load_response, mock_load_personality):
         """Test calling LLM with a response prompt (with personality)."""
         # Setup mock
         mock_load_response.return_value = "Respond to: {query}"
+        mock_load_personality.return_value = "CORE PERSONALITY"
         mock_response = Mock()
         mock_response.choices = [Mock(message=Mock(content="Generated response"))]
         mock_client.chat.completions.create.return_value = mock_response
@@ -63,8 +65,11 @@ class TestLLMIntegration:
             temperature=0.8
         )
         
-        # Verify response prompt was loaded
-        mock_load_response.assert_called_once_with("natal_reading")
+        # Verify response prompt was loaded without personality (it's added to system message)
+        mock_load_response.assert_called_once_with("natal_reading", include_personality=False)
+
+        # Verify personality was loaded
+        mock_load_personality.assert_called_once()
         
         # Verify LLM was called
         mock_client.chat.completions.create.assert_called_once()

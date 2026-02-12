@@ -47,7 +47,7 @@ def _parse_yaml_header(content: str) -> Tuple[Optional[Dict[str, Any]], str]:
         return None, content
 
 
-def _load_personality() -> str:
+def load_personality() -> str:
     """
     Load the global personality layer.
     
@@ -106,18 +106,19 @@ def load_parser_prompt(name: str) -> str:
         raise IOError(f"Error reading parser prompt file {prompt_path}: {e}")
 
 
-def load_response_prompt(name: str, include_metadata: bool = False) -> str:
+def load_response_prompt(name: str, include_metadata: bool = False, include_personality: bool = True) -> str:
     """
     Load a response prompt from prompts/responses/ directory.
     Response prompts are used for generating responses to users.
-    They INCLUDE the personality layer prepended to the prompt.
+    They can optionally INCLUDE the personality layer prepended to the prompt.
     
     Args:
         name: Name of the prompt file (e.g., "natal_reading" or "assistant_chat")
         include_metadata: If True, also returns parsed YAML metadata
+        include_personality: If True, prepends personality.md content
     
     Returns:
-        String content: personality.md + response prompt
+        String content: (personality.md +) response prompt
         OR tuple (content, metadata) if include_metadata=True
     
     Raises:
@@ -144,11 +145,13 @@ def load_response_prompt(name: str, include_metadata: bool = False) -> str:
         # Parse YAML header if present
         metadata, content_without_header = _parse_yaml_header(content)
         
-        # Load and prepend personality
-        personality = _load_personality()
-        
-        if personality:
-            full_prompt = f"{personality}\n\n{'=' * 60}\n\n{content_without_header}"
+        # Load and prepend personality if requested
+        if include_personality:
+            personality = load_personality()
+            if personality:
+                full_prompt = f"{personality}\n\n{'=' * 60}\n\n{content_without_header}"
+            else:
+                full_prompt = content_without_header
         else:
             full_prompt = content_without_header
         
