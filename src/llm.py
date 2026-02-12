@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 # Support DeepSeek and Groq
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")  # Default to groq
 
+# Configuration constants for conversation context
+MAX_CONVERSATION_CONTEXT_MESSAGES = 6  # Maximum number of previous messages to include in context
+MAX_MESSAGE_CONTENT_LENGTH = 200  # Maximum characters per message in conversation context
+
 if LLM_PROVIDER == "deepseek":
     logger.info(f"Initializing LLM client with provider: {LLM_PROVIDER}")
     client = OpenAI(
@@ -170,9 +174,9 @@ def extract_birth_data(text: str, conversation_history: list = None) -> dict:
         conversation_context = ""
         if conversation_history and len(conversation_history) > 0:
             conversation_context = "**Previous conversation:**\n"
-            for msg in conversation_history[-6:]:  # Use last 6 messages for context
+            for msg in conversation_history[-MAX_CONVERSATION_CONTEXT_MESSAGES:]:  # Use last N messages for context
                 role = "User" if msg["role"] == "user" else "Assistant"
-                content = msg["content"][:200]  # Limit length to avoid token overflow
+                content = msg["content"][:MAX_MESSAGE_CONTENT_LENGTH]  # Limit length to avoid token overflow
                 conversation_context += f"{role}: {content}\n"
             conversation_context += "\n"
         
