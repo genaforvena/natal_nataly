@@ -24,6 +24,27 @@ RUSSIAN_QUESTION_WORDS = [
     "зачем", "откуда", "куда", "сколько", "чей", "чья", "чьё", "чьи"
 ]
 
+# Topic detection keywords (module-level for performance and maintainability)
+CAREER_KEYWORDS = ["работ", "карьер", "професси", "деньг", "финанс", "бизнес"]
+RELATIONSHIP_KEYWORDS = ["отношени", "любов", "партнер", "семь", "брак", "друж"]
+GROWTH_KEYWORDS = ["развити", "рост", "измени", "потенциал", "цел", "смысл"]
+EMOTION_KEYWORDS = ["чувств", "эмоци", "настроени", "переживан", "психолог"]
+EMOTIONAL_INDICATORS = ["боюсь", "волнуюсь", "переживаю", "страшно", "тревож", "грустн"]
+SPECIFIC_REQUEST_KEYWORDS = ["конкретно", "точно", "именно", "подробн", "детальн"]
+TEMPORAL_KEYWORDS = ["сейчас", "сегодня", "завтра", "скоро", "будущ", "прошл"]
+
+# Template for expectation context block
+EXPECTATION_CONTEXT_TEMPLATE = """
+=== ОЖИДАНИЯ ПОЛЬЗОВАТЕЛЯ ИЗ КОНТЕКСТА ДИАЛОГА ===
+
+{expectations}
+
+ВАЖНО: Учитывай эти ожидания при формировании ответа. Адаптируй тон, глубину и фокус
+анализа под потребности пользователя, выявленные из контекста разговора.
+
+============================================
+"""
+
 
 def extract_user_expectations(
     conversation_history: List[Dict[str, str]] = None,
@@ -51,7 +72,7 @@ def extract_user_expectations(
     expectations_parts = []
     
     # Analyze conversation history if available
-    if conversation_history and len(conversation_history) > 0:
+    if conversation_history:
         # Extract user messages only
         user_messages = [msg["content"] for msg in conversation_history if msg["role"] == "user"]
         assistant_messages = [msg["content"] for msg in conversation_history if msg["role"] == "assistant"]
@@ -87,24 +108,20 @@ def extract_user_expectations(
             recent_messages_lower = [msg.lower() for msg in recent_user_messages]
             topics_detected = []
             
-            # Career/work related
-            career_keywords = ["работ", "карьер", "професси", "деньг", "финанс", "бизнес"]
-            if any(any(keyword in msg for keyword in career_keywords) for msg in recent_messages_lower):
+            # Career/work related - using module-level constant
+            if any(any(keyword in msg for keyword in CAREER_KEYWORDS) for msg in recent_messages_lower):
                 topics_detected.append("карьера/работа")
             
-            # Relationships
-            relationship_keywords = ["отношени", "любов", "партнер", "семь", "брак", "друж"]
-            if any(any(keyword in msg for keyword in relationship_keywords) for msg in recent_messages_lower):
+            # Relationships - using module-level constant
+            if any(any(keyword in msg for keyword in RELATIONSHIP_KEYWORDS) for msg in recent_messages_lower):
                 topics_detected.append("отношения")
             
-            # Personal growth
-            growth_keywords = ["развити", "рост", "измени", "потенциал", "цел", "смысл"]
-            if any(any(keyword in msg for keyword in growth_keywords) for msg in recent_messages_lower):
+            # Personal growth - using module-level constant
+            if any(any(keyword in msg for keyword in GROWTH_KEYWORDS) for msg in recent_messages_lower):
                 topics_detected.append("личностный рост")
             
-            # Emotions/psychology
-            emotion_keywords = ["чувств", "эмоци", "настроени", "переживан", "психолог"]
-            if any(any(keyword in msg for keyword in emotion_keywords) for msg in recent_messages_lower):
+            # Emotions/psychology - using module-level constant
+            if any(any(keyword in msg for keyword in EMOTION_KEYWORDS) for msg in recent_messages_lower):
                 topics_detected.append("эмоции/психология")
             
             if topics_detected:
@@ -127,19 +144,16 @@ def extract_user_expectations(
         elif len(current_message) < BRIEF_MESSAGE_THRESHOLD:
             current_expectations.append("Короткое сообщение - ожидает лаконичного ответа")
         
-        # Detect emotional tone
-        emotional_indicators = ["боюсь", "волнуюсь", "переживаю", "страшно", "тревож", "грустн"]
-        if any(indicator in current_message.lower() for indicator in emotional_indicators):
+        # Detect emotional tone - using module-level constant
+        if any(indicator in current_message.lower() for indicator in EMOTIONAL_INDICATORS):
             current_expectations.append("Эмоциональное состояние - ожидает поддержки и эмпатии")
         
-        # Detect request for specifics
-        specific_keywords = ["конкретно", "точно", "именно", "подробн", "детальн"]
-        if any(keyword in current_message.lower() for keyword in specific_keywords):
+        # Detect request for specifics - using module-level constant
+        if any(keyword in current_message.lower() for keyword in SPECIFIC_REQUEST_KEYWORDS):
             current_expectations.append("Запрос конкретики - ожидает детальный анализ")
         
-        # Detect temporal context
-        temporal_keywords = ["сейчас", "сегодня", "завтра", "скоро", "будущ", "прошл"]
-        if any(keyword in current_message.lower() for keyword in temporal_keywords):
+        # Detect temporal context - using module-level constant
+        if any(keyword in current_message.lower() for keyword in TEMPORAL_KEYWORDS):
             current_expectations.append("Временной контекст - интересует актуальность или прогноз")
         
         if current_expectations:
@@ -218,15 +232,7 @@ def build_expectation_context(
     """
     expectations = extract_user_expectations(conversation_history, current_message)
     
-    context_block = f"""
-=== ОЖИДАНИЯ ПОЛЬЗОВАТЕЛЯ ИЗ КОНТЕКСТА ДИАЛОГА ===
-
-{expectations}
-
-ВАЖНО: Учитывай эти ожидания при формировании ответа. Адаптируй тон, глубину и фокус
-анализа под потребности пользователя, выявленные из контекста разговора.
-
-============================================
-"""
+    # Use module-level template for consistency and i18n support
+    context_block = EXPECTATION_CONTEXT_TEMPLATE.format(expectations=expectations)
     
     return context_block
