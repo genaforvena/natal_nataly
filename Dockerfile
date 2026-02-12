@@ -29,6 +29,14 @@ COPY src ./src
 COPY scripts ./scripts
 COPY tests ./tests
 
+# Copy Alembic migration files
+COPY alembic ./alembic
+COPY alembic.ini .
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh .
+RUN chmod +x docker-entrypoint.sh
+
 # Set environment variable for database path (fallback for SQLite)
 ENV DB_PATH=/app/data/natal_nataly.sqlite
 
@@ -41,6 +49,5 @@ EXPOSE 8000 10000
 # Add src to PYTHONPATH so imports work correctly
 ENV PYTHONPATH=/app
 
-# Run uvicorn server with PORT from environment
-# Using shell form to allow environment variable expansion
-CMD uvicorn src.main:app --host 0.0.0.0 --port $PORT
+# Use entrypoint script that runs migrations before starting the app
+ENTRYPOINT ["./docker-entrypoint.sh"]

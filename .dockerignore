@@ -27,6 +27,7 @@ env/
 # Documentation
 *.md
 !README.md
+!alembic/README_MIGRATIONS.md
 
 # IDE
 .vscode/

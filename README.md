@@ -163,7 +163,23 @@ The bot automatically detects the database backend:
 - **Local development**: Uses SQLite (`natal_nataly.sqlite`)
 - **Production (Render)**: Uses PostgreSQL when `DATABASE_URL` is set
 
-No manual migration needed - tables are created automatically on first startup.
+#### Database Migrations
+
+The project uses Alembic for database schema migrations. When deploying or updating the application:
+
+1. **Apply pending migrations:**
+   ```bash
+   alembic upgrade head
+   ```
+
+2. **Check migration status:**
+   ```bash
+   alembic current
+   ```
+
+For more details, see [alembic/README_MIGRATIONS.md](alembic/README_MIGRATIONS.md).
+
+**Important for Production:** Always run migrations before starting the application to ensure the database schema is up-to-date.
 
 ## Features
 
