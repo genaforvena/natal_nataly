@@ -196,3 +196,74 @@ class TestLLMHelperFunctions:
         # Verify function exists
         assert classify_intent is not None
         assert callable(classify_intent)
+
+    @patch('src.llm.call_llm')
+    def test_extract_birth_data_with_conversation_history(self, mock_call_llm):
+        """Test that extract_birth_data passes conversation history to call_llm."""
+        from src.llm import extract_birth_data
+        import json
+        
+        # Setup mock to return valid birth data JSON
+        mock_call_llm.return_value = json.dumps({
+            "dob": "1989-11-13",
+            "time": "05:16",
+            "lat": 56.3269,
+            "lng": 44.0059,
+            "missing_fields": []
+        })
+        
+        # Create conversation history
+        conversation_history = [
+            {"role": "user", "content": "13 Ноября 1989 года, Нижний Новгород"},
+            {"role": "assistant", "content": "Спасибо! Мне нужно ещё узнать точное время вашего рождения..."}
+        ]
+        
+        # Call function with conversation history
+        result = extract_birth_data("05:16", conversation_history=conversation_history)
+        
+        # Verify call_llm was called
+        mock_call_llm.assert_called_once()
+        call_args = mock_call_llm.call_args
+        
+        # Verify conversation_context was included in variables
+        variables = call_args.kwargs['variables']
+        assert 'conversation_context' in variables
+        assert '13 Ноября 1989 года' in variables['conversation_context']
+        
+        # Verify result structure
+        assert result['dob'] == "1989-11-13"
+        assert result['time'] == "05:16"
+        assert result['lat'] == 56.3269
+        assert result['lng'] == 44.0059
+        assert result['missing_fields'] == []
+
+    @patch('src.llm.call_llm')
+    def test_extract_birth_data_without_conversation_history(self, mock_call_llm):
+        """Test that extract_birth_data works without conversation history."""
+        from src.llm import extract_birth_data
+        import json
+        
+        # Setup mock
+        mock_call_llm.return_value = json.dumps({
+            "dob": "1990-05-15",
+            "time": "14:30",
+            "lat": 40.7128,
+            "lng": -74.0060,
+            "missing_fields": []
+        })
+        
+        # Call function without conversation history
+        result = extract_birth_data("May 15, 1990 at 2:30 PM in New York")
+        
+        # Verify call_llm was called
+        mock_call_llm.assert_called_once()
+        call_args = mock_call_llm.call_args
+        
+        # Verify conversation_context is empty string when no history
+        variables = call_args.kwargs['variables']
+        assert 'conversation_context' in variables
+        assert variables['conversation_context'] == ""
+        
+        # Verify result
+        assert result['dob'] == "1990-05-15"
+        assert result['time'] == "14:30"

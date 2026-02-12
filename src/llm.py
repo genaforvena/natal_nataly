@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 # Support DeepSeek and Groq
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")  # Default to groq
 
+# Configuration constants for conversation context
+MAX_CONVERSATION_CONTEXT_MESSAGES = 6  # Maximum number of previous messages to include in context
+MAX_MESSAGE_CONTENT_LENGTH = 200  # Maximum characters per message in conversation context
+
 if LLM_PROVIDER == "deepseek":
     logger.info(f"Initializing LLM client with provider: {LLM_PROVIDER}")
     client = OpenAI(
@@ -149,20 +153,40 @@ def call_llm(
         raise
 
 
-def extract_birth_data(text: str) -> dict:
+def extract_birth_data(text: str, conversation_history: list = None) -> dict:
     """
     Use LLM to extract birth data from natural language text.
     Uses PARSER prompt (no personality layer).
+    
+    Args:
+        text: Current user message
+        conversation_history: Optional list of previous messages to accumulate data from
     
     Returns:
         dict with keys: dob, time, lat, lng, missing_fields
     """
     logger.debug(f"extract_birth_data called with message length: {len(text)}")
+    if conversation_history:
+        logger.debug(f"Using conversation history: {len(conversation_history)} messages")
+    
     try:
+        # Build conversation context string if history is provided
+        conversation_context = ""
+        if conversation_history and len(conversation_history) > 0:
+            conversation_context = "**Previous conversation:**\n"
+            for msg in conversation_history[-MAX_CONVERSATION_CONTEXT_MESSAGES:]:  # Use last N messages for context
+                role = "User" if msg["role"] == "user" else "Assistant"
+                content = msg["content"][:MAX_MESSAGE_CONTENT_LENGTH]  # Limit length to avoid token overflow
+                conversation_context += f"{role}: {content}\n"
+            conversation_context += "\n"
+        
         # Use new prompt architecture
         result = call_llm(
             prompt_type="parser/normalize_birth_input",
-            variables={"text": text},
+            variables={
+                "text": text,
+                "conversation_context": conversation_context
+            },
             temperature=0.1,  # Low temperature for consistent extraction
             is_parser=True
         )

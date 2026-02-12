@@ -641,7 +641,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     
     try:
         # Use LLM to extract birth data from free-form text
-        birth_data = extract_birth_data(text)
+        # Pass conversation history to accumulate data from previous messages
+        birth_data = extract_birth_data(text, conversation_history=conversation_history)
         
         # Stage 2: Log parsed data from LLM
         log_pipeline_stage_2_parsed_data(session_id, birth_data)
@@ -981,7 +982,8 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     
     try:
         # Extract data again from the clarification message
-        birth_data = extract_birth_data(text)
+        # Pass conversation history to accumulate data from all previous messages
+        birth_data = extract_birth_data(text, conversation_history=conversation_history)
         
         # Check what was previously missing
         previously_missing = user.missing_fields.split(",") if user.missing_fields else []
