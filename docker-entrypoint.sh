@@ -4,6 +4,11 @@
 
 set -e  # Exit on error
 
+# If arguments are provided, execute them directly (for testing/debugging)
+if [ $# -gt 0 ]; then
+    exec "$@"
+fi
+
 echo "=== natal_nataly startup script ==="
 echo ""
 
