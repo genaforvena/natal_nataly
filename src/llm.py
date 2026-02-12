@@ -96,8 +96,8 @@ def call_llm(
                     conversation_history=conversation_history,
                     current_message=current_user_message
                 )
-                # Prepend expectations with proper spacing to maintain prompt structure
-                prompt_template = expectation_context + "\n" + prompt_template
+                # Prepend expectations with double newline for clear visual separation
+                prompt_template = expectation_context + "\n\n" + prompt_template
                 logger.info("Injected user expectations context into response prompt")
         
         # Render variables into the template

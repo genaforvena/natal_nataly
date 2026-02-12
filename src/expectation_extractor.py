@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 DETAILED_MESSAGE_THRESHOLD = 200  # Messages longer than this are considered detailed/ready for deep discussion
 BRIEF_MESSAGE_THRESHOLD = 50      # Messages shorter than this are considered brief/expecting concise answers
 
+# Constants for question detection
+SHORT_MESSAGE_QUESTION_THRESHOLD = 100  # Check question words more aggressively in messages shorter than this
+QUESTION_WORD_CHECK_LIMIT = 5          # Number of words to check at message start for question words
+
 # Russian question words for better question detection
 RUSSIAN_QUESTION_WORDS = [
     "что", "как", "когда", "почему", "где", "кто", "какой", "какая", "какие",
@@ -79,26 +83,28 @@ def extract_user_expectations(
                 )
             
             # Detect topics mentioned in conversation
+            # Pre-lowercase all messages once for efficiency
+            recent_messages_lower = [msg.lower() for msg in recent_user_messages]
             topics_detected = []
             
             # Career/work related
             career_keywords = ["работ", "карьер", "професси", "деньг", "финанс", "бизнес"]
-            if any(keyword in msg.lower() for msg in recent_user_messages for keyword in career_keywords):
+            if any(any(keyword in msg for keyword in career_keywords) for msg in recent_messages_lower):
                 topics_detected.append("карьера/работа")
             
             # Relationships
             relationship_keywords = ["отношени", "любов", "партнер", "семь", "брак", "друж"]
-            if any(keyword in msg.lower() for msg in recent_user_messages for keyword in relationship_keywords):
+            if any(any(keyword in msg for keyword in relationship_keywords) for msg in recent_messages_lower):
                 topics_detected.append("отношения")
             
             # Personal growth
             growth_keywords = ["развити", "рост", "измени", "потенциал", "цел", "смысл"]
-            if any(keyword in msg.lower() for msg in recent_user_messages for keyword in growth_keywords):
+            if any(any(keyword in msg for keyword in growth_keywords) for msg in recent_messages_lower):
                 topics_detected.append("личностный рост")
             
             # Emotions/psychology
             emotion_keywords = ["чувств", "эмоци", "настроени", "переживан", "психолог"]
-            if any(keyword in msg.lower() for msg in recent_user_messages for keyword in emotion_keywords):
+            if any(any(keyword in msg for keyword in emotion_keywords) for msg in recent_messages_lower):
                 topics_detected.append("эмоции/психология")
             
             if topics_detected:
@@ -183,9 +189,11 @@ def _is_question(text: str) -> bool:
         return True
     
     # Check for question words anywhere in short messages (likely questions even without ?)
-    if len(text) < 100:  # Only for shorter messages to avoid false positives
+    # Use named constant for threshold
+    if len(text) < SHORT_MESSAGE_QUESTION_THRESHOLD:
+        # Check first few words - use named constant
         for qword in RUSSIAN_QUESTION_WORDS:
-            if qword in words[:5]:  # Check first 5 words
+            if qword in words[:QUESTION_WORD_CHECK_LIMIT]:
                 return True
     
     return False
