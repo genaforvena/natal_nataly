@@ -128,6 +128,7 @@ Assistant: {latest_assistant_response[:500]}{'...' if len(latest_assistant_respo
         if conversation_history and len(conversation_history) > 2:
             prompt += f"""CONVERSATION CONTEXT (last few messages):
 """
+            # Limit to last 4 messages to keep prompt manageable
             for msg in conversation_history[-4:]:
                 role_label = "Пользователь" if msg["role"] == "user" else "Ассистент"
                 content_preview = msg["content"][:200]
@@ -149,7 +150,8 @@ def update_profile_after_interaction(
     telegram_id: str,
     conversation_history: List[Dict[str, str]],
     latest_user_message: str,
-    latest_assistant_response: str
+    latest_assistant_response: str,
+    call_llm_func=None  # Allow injection for testing
 ) -> None:
     """
     Update user profile via LLM after each interaction.
@@ -163,8 +165,10 @@ def update_profile_after_interaction(
         conversation_history: Recent conversation messages
         latest_user_message: Most recent user message
         latest_assistant_response: Most recent assistant response
+        call_llm_func: Optional call_llm function for testing (default: uses src.llm.call_llm)
     """
-    from src.llm import call_llm
+    if call_llm_func is None:
+        from src.llm import call_llm as call_llm_func
     
     logger.info(f"Updating profile for user {telegram_id} after interaction")
     
@@ -181,7 +185,7 @@ def update_profile_after_interaction(
         )
         
         # Call LLM to update profile (using parser mode - no personality needed)
-        updated_profile = call_llm(
+        updated_profile = call_llm_func(
             prompt_type="parser/update_user_profile",
             variables={"prompt": prompt},
             temperature=0.3,  # Lower temperature for consistent profiling
