@@ -216,29 +216,55 @@ jobs:
           
           # Test 5: Start server briefly and check it responds
           echo "Test 5: Testing server startup..."
-          docker run --rm -d \
+          
+          # Start container in background and capture container ID
+          CONTAINER_ID=$(docker run -d \
             --name natal-nataly-test \
             -e TELEGRAM_BOT_TOKEN=test_token \
             -e LLM_PROVIDER=groq \
             -e GROQ_API_KEY=test_key \
             -p 8001:8000 \
-            natal-nataly:test
+            natal-nataly:test)
           
-          # Wait for server to start
-          sleep 5
+          echo "Started container: $CONTAINER_ID"
           
-          # Check health endpoint
+          # Wait for server to start (with retries)
+          echo "Waiting for server to be ready..."
+          for i in {1..10}; do
+            sleep 2
+            if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+              echo "✓ Server is ready"
+              break
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            if [ $i -eq 10 ]; then
+              echo "✗ Server failed to start within 20 seconds"
+              echo "Container logs:"
+              docker logs natal-nataly-test
+              docker stop natal-nataly-test || true
+              docker rm natal-nataly-test || true
+              exit 1
+            fi
+          done
+          
+          # Check health endpoint with verbose output
+          echo "Checking health endpoint..."
           if curl -f http://localhost:8001/health; then
+            echo ""
             echo "✓ Server health check passed"
           else
             echo "✗ Server health check failed"
             docker logs natal-nataly-test
-            docker stop natal-nataly-test
+            docker stop natal-nataly-test || true
+            docker rm natal-nataly-test || true
             exit 1
           fi
           
-          # Stop the container
-          docker stop natal-nataly-test
+          # Stop and remove the container
+          echo "Stopping container..."
+          docker stop natal-nataly-test || true
+          docker rm natal-nataly-test || true
+          echo "✓ Container stopped"
           
           echo ""
           echo "=========================================="

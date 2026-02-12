@@ -5,6 +5,7 @@ pyswisseph
 kerykeion
 timezonefinder
 sqlalchemy
+alembic
 psycopg2-binary
 openai
 python-dotenv
