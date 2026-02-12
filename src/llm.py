@@ -149,20 +149,40 @@ def call_llm(
         raise
 
 
-def extract_birth_data(text: str) -> dict:
+def extract_birth_data(text: str, conversation_history: list = None) -> dict:
     """
     Use LLM to extract birth data from natural language text.
     Uses PARSER prompt (no personality layer).
+    
+    Args:
+        text: Current user message
+        conversation_history: Optional list of previous messages to accumulate data from
     
     Returns:
         dict with keys: dob, time, lat, lng, missing_fields
     """
     logger.debug(f"extract_birth_data called with message length: {len(text)}")
+    if conversation_history:
+        logger.debug(f"Using conversation history: {len(conversation_history)} messages")
+    
     try:
+        # Build conversation context string if history is provided
+        conversation_context = ""
+        if conversation_history and len(conversation_history) > 0:
+            conversation_context = "**Previous conversation:**\n"
+            for msg in conversation_history[-6:]:  # Use last 6 messages for context
+                role = "User" if msg["role"] == "user" else "Assistant"
+                content = msg["content"][:200]  # Limit length to avoid token overflow
+                conversation_context += f"{role}: {content}\n"
+            conversation_context += "\n"
+        
         # Use new prompt architecture
         result = call_llm(
             prompt_type="parser/normalize_birth_input",
-            variables={"text": text},
+            variables={
+                "text": text,
+                "conversation_context": conversation_context
+            },
             temperature=0.1,  # Low temperature for consistent extraction
             is_parser=True
         )

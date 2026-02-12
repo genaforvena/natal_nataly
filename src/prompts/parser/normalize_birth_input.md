@@ -12,6 +12,7 @@ Your task is to parse natural language messages from users and extract the follo
 4. If any required field is missing or ambiguous, add it to missing_fields array
 5. Return ONLY valid JSON, no explanations or additional text
 6. If a field cannot be determined, set it to null
+7. **IMPORTANT: When conversation history is provided, accumulate data from previous messages. If date/location was mentioned in earlier messages and current message provides time, combine all available information.**
 
 ## OUTPUT FORMAT (strict JSON)
 ```json
@@ -26,6 +27,8 @@ Your task is to parse natural language messages from users and extract the follo
 
 ## EXAMPLES
 
+### Single Message Examples:
+
 **Input:** "I was born on May 15, 1990 at 2:30 PM in New York"
 **Output:** {{"dob": "1990-05-15", "time": "14:30", "lat": 40.7128, "lng": -74.0060, "missing_fields": []}}
 
@@ -35,7 +38,20 @@ Your task is to parse natural language messages from users and extract the follo
 **Input:** "15/12/1992 at 18:45"
 **Output:** {{"dob": "1992-12-15", "time": "18:45", "lat": null, "lng": null, "missing_fields": ["lat", "lng"]}}
 
+### Multi-Message Examples (with conversation history):
+
+**Conversation:**
+User: "13 Ноября 1989 года, Нижний Новгород"
+Assistant: "Спасибо! Мне нужно ещё узнать точное время вашего рождения..."
+User: "05:16"
+
+**Output:** {{"dob": "1989-11-13", "time": "05:16", "lat": 56.3269, "lng": 44.0059, "missing_fields": []}}
+
+*Explanation: Date and location from first message, time from current message - all combined.*
+
 ---
+
+{conversation_context}
 
 Extract birth data from the following message:
 
