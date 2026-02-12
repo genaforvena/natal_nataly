@@ -3,6 +3,7 @@ import json
 import logging
 from openai import OpenAI
 from src.prompt_loader import load_parser_prompt, load_response_prompt
+from src.expectation_extractor import build_expectation_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -36,14 +37,15 @@ def call_llm(
     variables: dict,
     temperature: float = 0.7,
     is_parser: bool = None,
-    conversation_history: list = None
+    conversation_history: list = None,
+    current_user_message: str = None
 ) -> str:
     """
     Universal LLM call function with new prompt architecture.
     
     This function automatically determines if the prompt is a parser or response type,
     loads the appropriate prompt (with or without personality), renders variables,
-    and makes the LLM API call.
+    injects user expectations from context, and makes the LLM API call.
     
     Args:
         prompt_type: Prompt identifier, e.g., "parser/intent", "responses/natal_reading"
@@ -51,6 +53,7 @@ def call_llm(
         temperature: Temperature for LLM sampling (default 0.7)
         is_parser: Explicitly set if this is a parser prompt (optional, auto-detected from prompt_type)
         conversation_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
+        current_user_message: The current user message (for expectation extraction)
         
     Returns:
         String response from LLM
@@ -59,7 +62,9 @@ def call_llm(
         call_llm(
             prompt_type="responses/natal_reading",
             variables={"chart_json": chart_data},
-            temperature=0.7
+            temperature=0.7,
+            conversation_history=history,
+            current_user_message="What about my career?"
         )
     """
     logger.debug(f"call_llm invoked with prompt_type={prompt_type}")
@@ -80,6 +85,16 @@ def call_llm(
             prompt_name = prompt_type.replace("responses/", "").replace("/responses/", "")
             prompt_template = load_response_prompt(prompt_name)
             logger.info(f"Loaded RESPONSE prompt: {prompt_name} (WITH personality)")
+            
+            # For response prompts, inject user expectations from conversation context
+            if conversation_history or current_user_message:
+                expectation_context = build_expectation_context(
+                    conversation_history=conversation_history,
+                    current_message=current_user_message
+                )
+                # Inject expectations before the main prompt content
+                prompt_template = expectation_context + "\n" + prompt_template
+                logger.info("Injected user expectations context into response prompt")
         
         # Render variables into the template
         try:
@@ -167,7 +182,7 @@ def extract_birth_data(text: str) -> dict:
         raise
 
 
-def generate_clarification_question(missing_fields: list, user_message: str) -> str:
+def generate_clarification_question(missing_fields: list, user_message: str, conversation_history: list = None) -> str:
     """
     Generate a friendly clarification question for missing birth data fields.
     Uses RESPONSE prompt (with personality layer).
@@ -175,6 +190,7 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
     Args:
         missing_fields: List of missing field names
         user_message: The user's previous message
+        conversation_history: List of previous conversation messages
         
     Returns:
         String with clarification question
@@ -189,7 +205,9 @@ def generate_clarification_question(missing_fields: list, user_message: str) -> 
                 "user_message": user_message
             },
             temperature=0.7,  # Moderate temperature for natural language
-            is_parser=False
+            is_parser=False,
+            conversation_history=conversation_history,
+            current_user_message=user_message  # Pass user message for context
         )
         
         logger.info(f"Clarification question generated, length: {len(result)} characters")
@@ -227,7 +245,8 @@ def interpret_chart(chart_json: dict, question: str = None, conversation_history
                 },
                 temperature=0.7,
                 is_parser=False,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                current_user_message=question  # Pass the question as current message
             )
         else:
             # Initial reading mode - full chart interpretation
@@ -238,7 +257,9 @@ def interpret_chart(chart_json: dict, question: str = None, conversation_history
                     "chart_json": chart_str
                 },
                 temperature=0.7,
-                is_parser=False
+                is_parser=False,
+                conversation_history=conversation_history,
+                current_user_message=None  # No specific user message for initial reading
             )
         
         logger.info(f"LLM API call successful, response length: {len(result)} characters")
@@ -331,7 +352,8 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
             },
             temperature=0.7,  # Moderate temperature for natural conversation
             is_parser=False,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            current_user_message=user_message  # Pass the current message for expectation extraction
         )
         
         logger.info(f"Assistant response generated, length: {len(result)} characters")
@@ -342,7 +364,7 @@ def generate_assistant_response(context: dict, user_message: str, conversation_h
         raise
 
 
-def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str) -> str:
+def interpret_transits(natal_chart_json: dict, transits_text: str, user_question: str, conversation_history: list = None) -> str:
     """
     Interpret transits in the context of the natal chart.
     Uses RESPONSE prompt (with personality layer).
@@ -351,6 +373,7 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
         natal_chart_json: User's natal chart data
         transits_text: Formatted transit data (from format_transits_for_llm)
         user_question: User's original question
+        conversation_history: List of previous conversation messages
         
     Returns:
         String interpretation of transits
@@ -370,7 +393,9 @@ def interpret_transits(natal_chart_json: dict, transits_text: str, user_question
                 "question": user_question
             },
             temperature=0.7,
-            is_parser=False
+            is_parser=False,
+            conversation_history=conversation_history,
+            current_user_message=user_question  # Pass the question for expectation extraction
         )
         
         logger.info(f"Transit interpretation generated, length: {len(result)} characters")

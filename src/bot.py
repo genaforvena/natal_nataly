@@ -629,6 +629,9 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
     
+    # Get conversation history for context
+    conversation_history = get_conversation_thread(session, user.telegram_id)
+    
     # Stage 1: Log raw input
     session_id = log_pipeline_stage_1_raw_input(user.telegram_id, text)
     if DEBUG_MODE:
@@ -649,8 +652,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             # Update state to awaiting_clarification
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(missing))
             
-            # Generate clarification question
-            question = generate_clarification_question(missing, text)
+            # Generate clarification question with conversation context
+            question = generate_clarification_question(missing, text, conversation_history=conversation_history)
             await send_telegram_message(chat_id, question)
             return
         
@@ -964,6 +967,9 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     """Handle messages when user is in awaiting_clarification state"""
     logger.info(f"Handling awaiting_clarification for user {user.telegram_id}")
     
+    # Get conversation history for context
+    conversation_history = get_conversation_thread(session, user.telegram_id)
+    
     try:
         # Extract data again from the clarification message
         birth_data = extract_birth_data(text)
@@ -980,8 +986,8 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             # Update missing fields
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
-            # Ask again
-            question = generate_clarification_question(still_missing, text)
+            # Ask again with conversation context
+            question = generate_clarification_question(still_missing, text, conversation_history=conversation_history)
             response = await send_telegram_message(chat_id, question)
             if response is None:
                 logger.warning(f"Could not send clarification question to chat_id={chat_id}, chat may be invalid")
