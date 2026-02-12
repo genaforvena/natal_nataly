@@ -23,6 +23,7 @@ class User(Base):
     assistant_mode = Column(Boolean, default=True)  # Enable assistant-style conversation mode
     pending_birth_data = Column(Text, nullable=True)  # JSON: birth data pending confirmation
     pending_normalized_data = Column(Text, nullable=True)  # JSON: normalized birth data pending confirmation
+    user_profile = Column(Text, nullable=True)  # Dynamic user profile document (LLM-maintained, max ~4000 chars)
 
 class AstroProfile(Base):
     """

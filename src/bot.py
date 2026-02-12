@@ -629,8 +629,11 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
     
-    # Get conversation history for context
+    # Get conversation history and user profile for context
     conversation_history = get_conversation_thread(session, user.telegram_id)
+    from src.user_profile_manager import UserProfileManager
+    profile_manager = UserProfileManager()
+    user_profile = profile_manager.get_user_profile(session, user.telegram_id)
     
     # Stage 1: Log raw input
     session_id = log_pipeline_stage_1_raw_input(user.telegram_id, text)
@@ -652,8 +655,8 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             # Update state to awaiting_clarification
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(missing))
             
-            # Generate clarification question with conversation context
-            question = generate_clarification_question(missing, text, conversation_history=conversation_history)
+            # Generate clarification question with conversation context and user profile
+            question = generate_clarification_question(missing, text, conversation_history=conversation_history, user_profile=user_profile)
             await send_telegram_message(chat_id, question)
             return
         
@@ -967,8 +970,11 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     """Handle messages when user is in awaiting_clarification state"""
     logger.info(f"Handling awaiting_clarification for user {user.telegram_id}")
     
-    # Get conversation history for context
+    # Get conversation history and user profile for context
     conversation_history = get_conversation_thread(session, user.telegram_id)
+    from src.user_profile_manager import UserProfileManager
+    profile_manager = UserProfileManager()
+    user_profile = profile_manager.get_user_profile(session, user.telegram_id)
     
     try:
         # Extract data again from the clarification message
@@ -986,8 +992,8 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             # Update missing fields
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
-            # Ask again with conversation context
-            question = generate_clarification_question(still_missing, text, conversation_history=conversation_history)
+            # Ask again with conversation context and user profile
+            question = generate_clarification_question(still_missing, text, conversation_history=conversation_history, user_profile=user_profile)
             response = await send_telegram_message(chat_id, question)
             if response is None:
                 logger.warning(f"Could not send clarification question to chat_id={chat_id}, chat may be invalid")
@@ -1086,6 +1092,13 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         conversation_history = get_conversation_thread(session, user.telegram_id)
         logger.debug("Retrieved conversation history: %d messages", len(conversation_history))
         
+        # Get user profile for personalization
+        from src.user_profile_manager import UserProfileManager
+        profile_manager = UserProfileManager()
+        user_profile = profile_manager.get_user_profile(session, user.telegram_id)
+        if user_profile:
+            logger.info(f"Using user profile for personalization: {len(user_profile)} chars")
+        
         # Build context for assistant
         profile = get_active_profile(session, user)
         context = build_agent_context(session, user, profile)
@@ -1094,11 +1107,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         prompt_name = "assistant_response"
         if user.assistant_mode:
             logger.info("Using assistant mode for response")
-            reading = generate_assistant_response(context, text, conversation_history=conversation_history)
+            reading = generate_assistant_response(context, text, conversation_history=conversation_history, user_profile=user_profile)
         else:
             # Fallback to legacy interpret_chart
             logger.info("Using legacy chart interpretation")
-            reading = interpret_chart(chart, question=text, conversation_history=conversation_history)
+            reading = interpret_chart(chart, question=text, conversation_history=conversation_history, user_profile=user_profile)
             prompt_name = "astrologer_chat"
         
         # Add user message and assistant response to conversation thread after generation
@@ -1115,6 +1128,21 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Mark as delivered if successful
         if response is not None:
             mark_reading_delivered(session, reading_id)
+        
+        # Update user profile after interaction (async, don't wait)
+        from src.user_profile_manager import update_profile_after_interaction
+        try:
+            # Get updated conversation history (now includes latest exchange)
+            updated_history = get_conversation_thread(session, user.telegram_id)
+            update_profile_after_interaction(
+                session=session,
+                telegram_id=user.telegram_id,
+                conversation_history=updated_history,
+                latest_user_message=text,
+                latest_assistant_response=reading
+            )
+        except Exception as profile_error:
+            logger.warning(f"Profile update failed (non-critical): {profile_error}")
         
         logger.info(f"Chart interpretation sent successfully for user {user.telegram_id}")
         
