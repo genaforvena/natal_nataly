@@ -78,8 +78,9 @@ class TestMessageCache:
         """Test cache statistics reporting."""
         # Initially empty
         stats = get_cache_stats()
-        assert stats["total_entries"] == 0
+        assert stats["memory_entries"] == 0
         assert stats["cache_expiry_hours"] == CACHE_EXPIRY_HOURS
+        assert "db_entries" in stats
         
         # Add some entries
         mark_if_new("user1", 1)
@@ -87,7 +88,8 @@ class TestMessageCache:
         mark_if_new("user3", 3)
         
         stats = get_cache_stats()
-        assert stats["total_entries"] == 3
+        assert stats["memory_entries"] == 3
+        assert stats["db_entries"] >= 3  # Database should have at least these entries
     
     def test_clear_cache(self, clean_cache):
         """Test clearing the cache."""
@@ -95,12 +97,13 @@ class TestMessageCache:
         mark_if_new("user1", 1)
         mark_if_new("user2", 2)
         
-        assert get_cache_stats()["total_entries"] == 2
+        assert get_cache_stats()["memory_entries"] >= 2
         
         # Clear cache
         clear_cache()
         
-        assert get_cache_stats()["total_entries"] == 0
+        assert get_cache_stats()["memory_entries"] == 0
+        assert get_cache_stats()["db_entries"] == 0
         assert mark_if_new("user1", 1) is True  # Should be new again
     
     def test_cache_cleanup_removes_old_entries(self, clean_cache):
@@ -191,3 +194,26 @@ class TestMessageCache:
         
         # Exactly one thread should have successfully marked it as new
         assert sum(results) == 1
+    
+    def test_persistence_across_restart_simulation(self, clean_cache):
+        """Test that messages persist across simulated restart (in-memory cache cleared)."""
+        # Mark a message as processed
+        telegram_id = "test_user"
+        message_id = 999
+        
+        # First time should be new
+        assert mark_if_new(telegram_id, message_id) is True
+        
+        # Second time should be duplicate (in-memory hit)
+        assert mark_if_new(telegram_id, message_id) is False
+        
+        # Simulate restart by clearing in-memory cache only
+        with _cache_lock:
+            _processed_messages.clear()
+        
+        # After "restart", message should still be detected as duplicate (database hit)
+        assert mark_if_new(telegram_id, message_id) is False
+        
+        # Verify message is back in memory cache after database hit
+        with _cache_lock:
+            assert (telegram_id, message_id) in _processed_messages

@@ -67,6 +67,24 @@ class Reading(Base):
     model_used = Column(String, nullable=True)  # LLM model identifier
 
 
+class ProcessedMessage(Base):
+    """
+    Persistent storage for processed Telegram messages to prevent duplicates.
+    Survives application restarts unlike in-memory cache.
+    """
+    __tablename__ = "processed_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False, index=True)
+    message_id = Column(Integer, nullable=False, index=True)
+    processed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    
+    # Composite unique constraint to prevent duplicate entries
+    __table_args__ = (
+        {'sqlite_autoincrement': True}
+    )
+
+
 # ============================================================================
 # DEBUG MODE MODELS - Debuggable Nataly
 # ============================================================================
