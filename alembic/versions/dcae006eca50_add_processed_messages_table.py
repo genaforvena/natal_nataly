@@ -46,12 +46,13 @@ def upgrade() -> None:
         ['processed_at']
     )
     
-    # Create composite index for duplicate detection query
+    # Create composite unique index for duplicate detection query
+    # This enforces uniqueness at database level, preventing duplicate entries
     op.create_index(
         'ix_processed_messages_telegram_message',
         'processed_messages',
         ['telegram_id', 'message_id'],
-        unique=False  # Not unique because we track history, but practically will be unique for recent messages
+        unique=True
     )
 
 

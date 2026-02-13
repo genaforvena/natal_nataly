@@ -11,6 +11,7 @@ This prevents duplicate processing when:
 """
 
 import logging
+import random
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple
@@ -131,7 +132,23 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
                 processed_at=now
             )
             session.add(new_entry)
-            session.commit()
+            try:
+                session.commit()
+            except Exception as commit_error:
+                # Handle unique constraint violation (race condition where another process inserted)
+                session.rollback()
+                error_msg = str(commit_error).lower()
+                if 'unique' in error_msg or 'duplicate' in error_msg:
+                    logger.info(
+                        "Message %s from user %s already exists in database (race condition), "
+                        "treating as duplicate",
+                        message_id,
+                        telegram_id
+                    )
+                    return False
+                else:
+                    # Other database error, re-raise to be caught by outer exception handler
+                    raise
             
             # Add to in-memory cache
             _processed_messages[key] = now
@@ -190,7 +207,6 @@ def _cleanup_cache_and_db_locked(session: Session) -> None:
     
     # Clean up database (only occasionally to avoid overhead)
     # Use a simple heuristic: clean every 100th call
-    import random
     if random.randint(1, 100) == 1:
         try:
             deleted_count = session.query(ProcessedMessage).filter(

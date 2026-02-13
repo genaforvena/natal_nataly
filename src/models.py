@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, ForeignKey
+from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, ForeignKey, UniqueConstraint
 from datetime import datetime, timezone
 from src.db import Base
 
@@ -79,8 +79,9 @@ class ProcessedMessage(Base):
     message_id = Column(Integer, nullable=False, index=True)
     processed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
-    # Composite unique constraint to prevent duplicate entries
+    # Composite unique constraint to prevent duplicate entries at database level
     __table_args__ = (
+        UniqueConstraint('telegram_id', 'message_id', name='uq_telegram_message'),
         {'sqlite_autoincrement': True}
     )
 
