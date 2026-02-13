@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
+from src.services.analytics import analytics
 
 
 class HealthCheckFilter(logging.Filter):
@@ -64,9 +65,25 @@ async def telegram_webhook(request: Request):
     logger.info("Webhook endpoint called")
     try:
         data = await request.json()
+
+        # Track raw message event
+        message = data.get("message", {})
+        if message:
+            telegram_id = str(message.get("from", {}).get("id", "unknown"))
+            analytics.track_event(
+                user_id=telegram_id,
+                event_name="message_received",
+                properties={
+                    "chat_type": message.get("chat", {}).get("type"),
+                    "has_text": bool(message.get("text")),
+                    "has_document": bool(message.get("document")),
+                    "has_photo": bool(message.get("photo"))
+                }
+            )
+
         # Log only non-sensitive metadata
-        message_id = data.get("message", {}).get("message_id", "unknown")
-        chat_id = data.get("message", {}).get("chat", {}).get("id", "unknown")
+        message_id = message.get("message_id", "unknown")
+        chat_id = message.get("chat", {}).get("id", "unknown")
         logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}")
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")

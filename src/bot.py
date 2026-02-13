@@ -44,6 +44,7 @@ from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIG
 from src.thread_manager import add_message_to_thread, get_conversation_thread, reset_thread, get_thread_summary
 from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
+from src.services.analytics import analytics
 from src.services.intent_router import detect_request_type
 from src.prompt_loader import load_response_prompt
 
@@ -479,6 +480,17 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
         session.add(profile)
         session.commit()
         logger.info(f"Profile created successfully: id={profile.id}")
+
+        # Track profile creation
+        analytics.track_event(
+            user_id=telegram_id,
+            event_name="profile_created",
+            properties={
+                "profile_type": profile_type,
+                "has_name": bool(profile_name)
+            }
+        )
+
         return profile
     except Exception as e:
         logger.exception(f"Error creating profile: {e}")
@@ -808,6 +820,16 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             
             # Create profile and set as active
             create_and_activate_profile(session, user, birth_data, chart)
+
+            # Track chart generation
+            analytics.track_event(
+                user_id=user.telegram_id,
+                event_name="chart_generated",
+                properties={
+                    "source": "generated",
+                    "engine": chart.get("engine_version")
+                }
+            )
             
             # Clear pending data
             user.pending_birth_data = None
@@ -1140,6 +1162,17 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         # Mark as delivered if successful
         if response is not None:
             mark_reading_delivered(session, reading_id)
+
+            # Track reading sent
+            analytics.track_event(
+                user_id=user.telegram_id,
+                event_name="reading_sent",
+                properties={
+                    "reading_id": reading_id,
+                    "model": MODEL,
+                    "assistant_mode": user.assistant_mode
+                }
+            )
         
         # Update user profile after interaction (async, don't wait)
         from src.user_profile_manager import update_profile_after_interaction

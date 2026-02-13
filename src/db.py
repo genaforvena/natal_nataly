@@ -33,7 +33,8 @@ def init_db():
     # Import models here to avoid circular import (models.py imports Base from this module)
     from src.models import (
         User, BirthData, Reading, AstroProfile, PipelineLog,
-        NatalChart, DebugSession, UserNatalChart, ConversationMessage
+        NatalChart, DebugSession, UserNatalChart, ConversationMessage,
+        AnalyticsEvent
     )
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized successfully")

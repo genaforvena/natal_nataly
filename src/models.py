@@ -195,3 +195,17 @@ class ConversationMessage(Base):
     content = Column(Text, nullable=False)  # Message text or summary
     is_first_pair = Column(Boolean, default=False)  # True for first user+assistant messages
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class AnalyticsEvent(Base):
+    """
+    Stores analytics events for in-house tracking.
+    Enables user retention analysis and behavior tracking without external services.
+    """
+    __tablename__ = "analytics_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(String, nullable=False, index=True)
+    event_name = Column(String, nullable=False, index=True)
+    properties = Column(Text, nullable=True)  # JSON string of event properties
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
