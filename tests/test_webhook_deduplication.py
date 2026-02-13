@@ -189,8 +189,7 @@ class TestWebhookDeduplication:
         assert response.status_code == 200
         result = response.json()
         assert result.get("ok") is True
-        # Should not have error
-        assert "error" not in result or result.get("error") is None
+        assert result.get("error") is None
         assert mock_bot_handler.call_count == 1
     
     def test_webhook_missing_user_id(self, client, mock_bot_handler):
@@ -211,8 +210,7 @@ class TestWebhookDeduplication:
         assert response.status_code == 200
         result = response.json()
         assert result.get("ok") is True
-        # Should not have error
-        assert "error" not in result or result.get("error") is None
+        assert result.get("error") is None
         assert mock_bot_handler.call_count == 1
     
     def test_webhook_bot_handler_error_returns_error(self, client, mock_bot_handler):
