@@ -178,7 +178,6 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
             session.close()
 
 
-
 def _cleanup_cache_and_db_locked(session: Session) -> None:
     """
     Remove expired entries from both cache and database to prevent memory/storage leaks.
@@ -219,7 +218,6 @@ def _cleanup_cache_and_db_locked(session: Session) -> None:
         except Exception as e:
             logger.warning(f"Error cleaning up database entries: {e}")
             session.rollback()
-
 
 
 def get_cache_stats() -> Dict[str, int]:
@@ -274,4 +272,3 @@ def clear_cache() -> None:
                 session.close()
         except Exception as e:
             logger.error(f"Error clearing database cache: {e}")
-

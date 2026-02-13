@@ -6,6 +6,7 @@ Tests the runtime cache for deduplicating Telegram webhook messages.
 
 import pytest
 from datetime import datetime, timezone, timedelta
+from src.db import init_db
 from src.message_cache import (
     mark_if_new,
     get_cache_stats,
@@ -14,6 +15,13 @@ from src.message_cache import (
 )
 # Import _processed_messages only for testing expiry behavior
 from src.message_cache import _processed_messages, _cache_lock
+
+
+@pytest.fixture(scope="module", autouse=True)
+def initialize_database():
+    """Initialize database before running tests."""
+    init_db()
+    yield
 
 
 @pytest.fixture
