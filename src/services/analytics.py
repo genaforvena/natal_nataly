@@ -1,9 +1,7 @@
-import os
 import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 from src.db import SessionLocal
 from src.models import AnalyticsEvent
 
@@ -45,20 +43,22 @@ class SQLProvider(AnalyticsProvider):
 
     def capture(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
         """Save event to the database."""
+        session = SessionLocal()
         try:
-            session = SessionLocal()
-            try:
-                event = AnalyticsEvent(
-                    telegram_id=user_id,
-                    event_name=event_name,
-                    properties=json.dumps(properties) if properties else None
-                )
-                session.add(event)
-                session.commit()
-            finally:
-                session.close()
-        except Exception as e:
-            logger.error(f"Failed to capture SQL analytics event: {e}")
+            event = AnalyticsEvent(
+                telegram_id=user_id,
+                event_name=event_name,
+                properties=json.dumps(properties) if properties else None
+            )
+            session.add(event)
+            session.commit()
+        except Exception:
+            # Roll back the transaction to avoid leaving the connection in a failed state
+            session.rollback()
+            # Log full stack trace for easier debugging of DB errors
+            logger.exception("Failed to capture SQL analytics event")
+        finally:
+            session.close()
 
     def identify(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
         """Track user identification as a special event."""

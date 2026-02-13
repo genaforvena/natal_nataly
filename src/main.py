@@ -69,17 +69,29 @@ async def telegram_webhook(request: Request):
         # Track raw message event
         message = data.get("message", {})
         if message:
-            telegram_id = str(message.get("from", {}).get("id", "unknown"))
-            analytics.track_event(
-                user_id=telegram_id,
-                event_name="message_received",
-                properties={
-                    "chat_type": message.get("chat", {}).get("type"),
-                    "has_text": bool(message.get("text")),
-                    "has_document": bool(message.get("document")),
-                    "has_photo": bool(message.get("photo"))
-                }
-            )
+            from_user = message.get("from")
+            telegram_id_raw = None
+            if isinstance(from_user, dict):
+                telegram_id_raw = from_user.get("id")
+
+            telegram_id: str | None = None
+            if isinstance(telegram_id_raw, int):
+                telegram_id = str(telegram_id_raw)
+            elif isinstance(telegram_id_raw, str) and telegram_id_raw.isdigit():
+                telegram_id = telegram_id_raw
+
+            # Only track analytics when we have a valid sender id
+            if telegram_id is not None:
+                analytics.track_event(
+                    user_id=telegram_id,
+                    event_name="message_received",
+                    properties={
+                        "chat_type": message.get("chat", {}).get("type"),
+                        "has_text": bool(message.get("text")),
+                        "has_document": bool(message.get("document")),
+                        "has_photo": bool(message.get("photo"))
+                    }
+                )
 
         # Log only non-sensitive metadata
         message_id = message.get("message_id", "unknown")
