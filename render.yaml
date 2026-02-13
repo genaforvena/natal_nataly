@@ -19,6 +19,8 @@ services:
         value: "true"
       - key: WEBHOOK_URL
         sync: false
+      - key: TELEGRAM_SECRET_TOKEN
+        sync: false
       - key: PORT
         value: "10000"
 

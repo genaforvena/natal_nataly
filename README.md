@@ -80,7 +80,11 @@ Stateful personal astrology assistant bot for Telegram with multi-profile suppor
 4. **Set up Telegram webhook** (for production):
    ```bash
    curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
-     -d "url=https://your-domain.com/webhook"
+     -H "Content-Type: application/json" \
+     -d '{
+       "url": "https://your-domain.com/webhook",
+       "secret_token": "your_secret_token_here"
+     }'
    ```
 
 5. **Test locally with ngrok** (optional):
@@ -131,6 +135,7 @@ natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL sup
    DATABASE_URL=<copy_from_postgres_internal_database_url>
    RENDER=true
    WEBHOOK_URL=https://your-app-name.onrender.com/webhook
+   TELEGRAM_SECRET_TOKEN=<your_random_secret_token>
    PORT=10000
    ```
    
@@ -145,11 +150,14 @@ natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL sup
 
 7. **Register Telegram Webhook:**
    
-   Once deployed, register your webhook with Telegram:
+   Once deployed, register your webhook with Telegram, including your secret token for security:
    ```bash
    curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://your-app-name.onrender.com/webhook"}'
+     -d '{
+       "url": "https://your-app-name.onrender.com/webhook",
+       "secret_token": "<your_random_secret_token>"
+     }'
    ```
 
 8. **Verify deployment:**

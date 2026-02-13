@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Header, HTTPException
 from src.bot import handle_telegram_update
 from src.db import init_db
 
@@ -60,8 +60,18 @@ async def health():
     return {"status": "ok"}
 
 @app.post("/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str = Header(None)
+):
     logger.info("Webhook endpoint called")
+
+    # Verify secret token if configured
+    secret_token = os.getenv("TELEGRAM_SECRET_TOKEN")
+    if secret_token and x_telegram_bot_api_secret_token != secret_token:
+        logger.warning("Unauthorized webhook request: secret token mismatch")
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
     try:
         data = await request.json()
         # Log only non-sensitive metadata

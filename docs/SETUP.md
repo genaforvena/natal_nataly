@@ -25,6 +25,9 @@ GROQ_API_KEY=your_groq_api_key_here
 
 # If using DeepSeek:
 # DEEPSEEK_API_KEY=your_deepseek_api_key_here
+
+# Secret token for Telegram webhook (recommended)
+TELEGRAM_SECRET_TOKEN=your_secret_token_here
 ```
 
 3. Create ephemeris directory (required for pyswisseph):
@@ -43,12 +46,15 @@ The server will start on `http://localhost:8000`
 
 ## Setting Up Telegram Webhook
 
-After deploying your server to a public URL, register the webhook with Telegram:
+After deploying your server to a public URL, register the webhook with Telegram, including your secret token for security:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://your-domain.com/webhook"}'
+  -d '{
+    "url": "https://your-domain.com/webhook",
+    "secret_token": "your_secret_token_here"
+  }'
 ```
 
 ## Testing Locally
@@ -62,7 +68,10 @@ ngrok http 8000
 # Use the ngrok URL to register webhook
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://your-ngrok-url.ngrok.io/webhook"}'
+  -d '{
+    "url": "https://your-ngrok-url.ngrok.io/webhook",
+    "secret_token": "your_secret_token_here"
+  }'
 ```
 
 ## Using the Bot

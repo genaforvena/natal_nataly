@@ -32,6 +32,7 @@ Edit the `.env` file with your actual credentials:
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_from_botfather
 LLM_PROVIDER=groq
 GROQ_API_KEY=your_groq_api_key
+TELEGRAM_SECRET_TOKEN=your_secret_token_here
 ```
 
 **Get API Keys:**
@@ -67,11 +68,15 @@ docker-compose logs -f
 
 ### 5. Set Up Telegram Webhook
 
-After the bot is running and accessible via a public URL, register the webhook:
+After the bot is running and accessible via a public URL, register the webhook with your secret token:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
-  -d "url=https://your-domain.com/webhook"
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://your-domain.com/webhook",
+    "secret_token": "your_secret_token_here"
+  }'
 ```
 
 ### 6. Stop the Bot
@@ -146,6 +151,7 @@ The bot uses a SQLite database that is persisted in the `./data` directory on yo
 | `LLM_PROVIDER` | Yes | `groq` | LLM provider: `groq` or `deepseek` |
 | `GROQ_API_KEY` | If using Groq | - | Groq API key |
 | `DEEPSEEK_API_KEY` | If using DeepSeek | - | DeepSeek API key |
+| `TELEGRAM_SECRET_TOKEN` | No | - | Secret token for webhook verification |
 | `DB_PATH` | No | `/app/data/natal_nataly.sqlite` | Database file path |
 
 ## Port Configuration
