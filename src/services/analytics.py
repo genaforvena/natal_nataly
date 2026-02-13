@@ -1,9 +1,6 @@
-import os
-import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
 from src.db import SessionLocal
 from src.models import AnalyticsEvent
 
@@ -45,6 +42,7 @@ class SQLProvider(AnalyticsProvider):
 
     def capture(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
         """Save event to the database."""
+        session = SessionLocal()
         try:
             session = SessionLocal()
             try:

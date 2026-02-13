@@ -820,8 +820,13 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             
             # Create profile and set as active
             create_and_activate_profile(session, user, birth_data, chart)
+            
+            # Clear pending data
+            user.pending_birth_data = None
+            user.pending_normalized_data = None
+            session.commit()
 
-            # Track chart generation
+            # Track chart generation after commit to avoid lock contention
             analytics.track_event(
                 user_id=user.telegram_id,
                 event_name="chart_generated",
@@ -830,11 +835,6 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                     "engine": chart.get("engine_version")
                 }
             )
-            
-            # Clear pending data
-            user.pending_birth_data = None
-            user.pending_normalized_data = None
-            session.commit()
             
             # Send success message
             await send_telegram_message(

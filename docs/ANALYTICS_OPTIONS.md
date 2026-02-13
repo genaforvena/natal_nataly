@@ -21,7 +21,7 @@ We have implemented a native SQL-based analytics solution to ensure all user dat
 ### Key Features:
 - **No Third-party Tracking**: All events are stored in your own PostgreSQL/SQLite database.
 - **Data Transparency**: You have full access to the raw events.
-- **Minimal Overhead**: Uses the existing database connection and SQLAlchemy models.
+- **Minimal Overhead**: Uses the existing SQLAlchemy setup and models with short-lived sessions per event.
 
 ### Tracked Events:
 - `message_received`: Captured at the webhook level for every incoming message.
@@ -42,6 +42,8 @@ ORDER BY 1 DESC;
 ```
 
 #### User Retention (Day 1)
+
+**PostgreSQL:**
 ```sql
 WITH user_first_day AS (
     SELECT telegram_id, date(first_seen) as join_day
@@ -51,6 +53,22 @@ SELECT
     join_day,
     count(distinct u.telegram_id) as new_users,
     count(distinct CASE WHEN date(e.created_at) = join_day + interval '1 day' THEN u.telegram_id END) as day_1_retention
+FROM user_first_day u
+LEFT JOIN analytics_events e ON u.telegram_id = e.telegram_id
+GROUP BY 1
+ORDER BY 1 DESC;
+```
+
+**SQLite:**
+```sql
+WITH user_first_day AS (
+    SELECT telegram_id, date(first_seen) as join_day
+    FROM users
+)
+SELECT
+    join_day,
+    count(distinct u.telegram_id) as new_users,
+    count(distinct CASE WHEN date(e.created_at) = date(join_day, '+1 day') THEN u.telegram_id END) as day_1_retention
 FROM user_first_day u
 LEFT JOIN analytics_events e ON u.telegram_id = e.telegram_id
 GROUP BY 1

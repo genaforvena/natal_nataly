@@ -32,7 +32,8 @@ if config.config_file_name is not None:
 # Import all models so Alembic can detect them
 from src.models import (
     User, BirthData, Reading, AstroProfile, PipelineLog,
-    NatalChart, DebugSession, UserNatalChart, ConversationMessage
+    NatalChart, DebugSession, UserNatalChart, ConversationMessage,
+    AnalyticsEvent
 )
 
 # add your model's MetaData object here
