@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), nullable=False, autoincrement=True),
         sa.Column('telegram_id', sa.String(), nullable=False),
         sa.Column('event_name', sa.String(), nullable=False),
-        sa.Column('properties', sa.Text(), nullable=True),
+        sa.Column('properties', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )

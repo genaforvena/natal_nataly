@@ -1,4 +1,3 @@
-import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
@@ -48,7 +47,7 @@ class SQLProvider(AnalyticsProvider):
             event = AnalyticsEvent(
                 telegram_id=user_id,
                 event_name=event_name,
-                properties=json.dumps(properties) if properties else None
+                properties=properties
             )
             session.add(event)
             session.commit()
@@ -96,4 +95,4 @@ class AnalyticsService:
 
 
 # Global helper for easy access
-analytics = AnalyticsService.get_instance()
+analytics: AnalyticsService = AnalyticsService.get_instance()

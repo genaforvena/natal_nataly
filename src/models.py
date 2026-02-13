@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, ForeignKey
+from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, ForeignKey, JSON
 from datetime import datetime, timezone
 from src.db import Base
 
@@ -207,5 +207,5 @@ class AnalyticsEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(String, nullable=False, index=True)
     event_name = Column(String, nullable=False, index=True)
-    properties = Column(Text, nullable=True)  # JSON string of event properties
+    properties = Column(JSON, nullable=True)  # Structured event properties
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
