@@ -65,21 +65,24 @@ async def telegram_webhook(request: Request):
     logger.info("Webhook endpoint called")
     try:
         data = await request.json()
-        # Log only non-sensitive metadata
-        message_id = data.get("message", {}).get("message_id", "unknown")
-        chat_id = data.get("message", {}).get("chat", {}).get("id", "unknown")
-        telegram_id = str(data.get("message", {}).get("from", {}).get("id", "unknown"))
+        # Extract message metadata safely
+        message = data.get("message", {})
+        message_id = message.get("message_id")
+        chat_id = message.get("chat", {}).get("id", "unknown")
+        telegram_id = message.get("from", {}).get("id")
         
         logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}, telegram_id={telegram_id}")
         
         # Check if this message has already been processed
-        if message_id != "unknown" and telegram_id != "unknown":
-            if is_message_processed(telegram_id, message_id):
-                logger.info(f"Skipping duplicate message {message_id} from user {telegram_id}")
+        # Only apply deduplication if we have valid IDs (not None)
+        if message_id is not None and telegram_id is not None:
+            telegram_id_str = str(telegram_id)
+            if is_message_processed(telegram_id_str, message_id):
+                logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
             
             # Mark message as processed before handling to prevent race conditions
-            mark_message_processed(telegram_id, message_id)
+            mark_message_processed(telegram_id_str, message_id)
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
