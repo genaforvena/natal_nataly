@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
-from src.message_cache import is_message_processed, mark_message_processed
+from src.message_cache import mark_if_new
 
 
 class HealthCheckFilter(logging.Filter):
@@ -73,16 +73,15 @@ async def telegram_webhook(request: Request):
         
         logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}, telegram_id={telegram_id}")
         
-        # Check if this message has already been processed
+        # Check if this message has already been processed (atomic operation)
         # Only apply deduplication if we have valid IDs (not None)
         if message_id is not None and telegram_id is not None:
             telegram_id_str = str(telegram_id)
-            if is_message_processed(telegram_id_str, message_id):
+            is_new = mark_if_new(telegram_id_str, message_id)
+            
+            if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
-            
-            # Mark message as processed before handling to prevent race conditions
-            mark_message_processed(telegram_id_str, message_id)
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
