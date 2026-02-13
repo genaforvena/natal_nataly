@@ -230,12 +230,13 @@ class TestDatabaseIntegration:
 
     def test_database_models_defined(self):
         """Test that database models are properly defined."""
-        from src.models import User, BirthData, Reading
+        from src.models import User, BirthData, Reading, AnalyticsEvent
         
         # Verify models exist
         assert User is not None
         assert BirthData is not None
         assert Reading is not None
+        assert AnalyticsEvent is not None
         
         # Verify they have expected attributes
         assert hasattr(User, '__tablename__')

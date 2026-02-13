@@ -9,28 +9,42 @@ from src.models import AnalyticsEvent
 
 logger = logging.getLogger(__name__)
 
+
 class AnalyticsProvider(ABC):
+    """Base class for analytics providers."""
+
     @abstractmethod
     def capture(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
+        """Capture an event."""
         pass
 
     @abstractmethod
     def identify(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
+        """Identify a user with properties."""
         pass
 
+
 class ConsoleProvider(AnalyticsProvider):
+    """Analytics provider that logs events to the console."""
+
     def capture(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
+        """Log event to console."""
         logger.info(f"[ANALYTICS] Event: {event_name} | User: {user_id} | Props: {properties}")
 
     def identify(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
+        """Log user identification to console."""
         logger.info(f"[ANALYTICS] Identify User: {user_id} | Props: {properties}")
+
 
 class SQLProvider(AnalyticsProvider):
     """
     In-house SQL-based analytics provider.
+
     Stores events directly in the database for maximum privacy and data ownership.
     """
+
     def capture(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
+        """Save event to the database."""
         try:
             session = SessionLocal()
             try:
@@ -47,12 +61,16 @@ class SQLProvider(AnalyticsProvider):
             logger.error(f"Failed to capture SQL analytics event: {e}")
 
     def identify(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
+        """Track user identification as a special event."""
         # Identify is handled by updating user properties in the database
         # This can be implemented by adding custom fields to the User model if needed.
         # For now, we track it as a special event.
         self.capture(user_id, "$identify", properties)
 
+
 class AnalyticsService:
+    """Service to handle analytics events using a configured provider."""
+
     _instance: Optional['AnalyticsService'] = None
 
     def __init__(self):
@@ -63,16 +81,17 @@ class AnalyticsService:
 
     @classmethod
     def get_instance(cls) -> 'AnalyticsService':
+        """Get the singleton instance of AnalyticsService."""
         if cls._instance is None:
             cls._instance = AnalyticsService()
         return cls._instance
 
     def track_event(self, user_id: str, event_name: str, properties: Optional[Dict[str, Any]] = None):
-        """Track a discrete event"""
+        """Track a discrete event."""
         self.provider.capture(user_id, event_name, properties)
 
     def identify_user(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
-        """Update user properties"""
+        """Update user properties."""
         self.provider.identify(user_id, properties)
 
 
