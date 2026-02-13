@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
+from src.message_cache import is_message_processed, mark_message_processed
 
 
 class HealthCheckFilter(logging.Filter):
@@ -67,7 +68,19 @@ async def telegram_webhook(request: Request):
         # Log only non-sensitive metadata
         message_id = data.get("message", {}).get("message_id", "unknown")
         chat_id = data.get("message", {}).get("chat", {}).get("id", "unknown")
-        logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}")
+        telegram_id = str(data.get("message", {}).get("from", {}).get("id", "unknown"))
+        
+        logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}, telegram_id={telegram_id}")
+        
+        # Check if this message has already been processed
+        if message_id != "unknown" and telegram_id != "unknown":
+            if is_message_processed(telegram_id, message_id):
+                logger.info(f"Skipping duplicate message {message_id} from user {telegram_id}")
+                return {"ok": True, "skipped": "duplicate"}
+            
+            # Mark message as processed before handling to prevent race conditions
+            mark_message_processed(telegram_id, message_id)
+        
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
         return result
