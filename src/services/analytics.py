@@ -56,6 +56,7 @@ class AnalyticsService:
     _instance: Optional['AnalyticsService'] = None
 
     def __init__(self):
+        """Initialize the AnalyticsService with a SQLProvider."""
         # Default to SQLProvider for in-house analytics as per user preference
         self.provider: AnalyticsProvider = SQLProvider()
         logger.info("Analytics initialized with SQLProvider (In-house)")
@@ -73,6 +74,7 @@ class AnalyticsService:
     def identify_user(self, user_id: str, properties: Optional[Dict[str, Any]] = None):
         """Update user properties"""
         self.provider.identify(user_id, properties)
+
 
 # Global helper for easy access
 analytics = AnalyticsService.get_instance()
