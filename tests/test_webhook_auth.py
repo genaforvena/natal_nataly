@@ -23,7 +23,7 @@ def mock_update():
     }
 
 @patch('src.main.handle_telegram_update')
-@patch('src.main.init_db') # Mock init_db to avoid DB issues
+@patch('src.main.init_db')  # Mock init_db to avoid DB issues
 def test_webhook_no_token_required(mock_init_db, mock_handle, client, mock_update):
     """Test webhook when no secret token is configured in environment."""
     with patch('os.getenv', side_effect=lambda k, d=None: None if k == "TELEGRAM_SECRET_TOKEN" else os.environ.get(k, d)):

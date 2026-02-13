@@ -62,7 +62,7 @@ async def health():
 @app.post("/webhook")
 async def telegram_webhook(
     request: Request,
-    x_telegram_bot_api_secret_token: str = Header(None)
+    x_telegram_bot_api_secret_token: str = Header(None)  # noqa: B008
 ):
     logger.info("Webhook endpoint called")
 
