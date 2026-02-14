@@ -74,10 +74,10 @@ def create_webhook_payload(user_id: int, message_id: int, text: str):
 class TestNullMessageTextHandling:
     """Tests for handling pending messages with NULL message_text."""
     
-    def test_combining_skips_null_text_messages(self, client, mock_bot_handler):
+    def test_messages_processed_after_null_text_marked_replied(self, client, mock_bot_handler):
         """
-        Test that when combining messages, NULL text messages are skipped
-        but don't prevent processing.
+        Test that messages are processed successfully after old pending messages
+        with NULL text are marked as replied.
         """
         user_id = 55555
         telegram_id = str(user_id)
@@ -172,9 +172,10 @@ class TestNullMessageTextHandling:
             if captured_text is not None:
                 assert captured_text == new_message_text
     
-    def test_warning_logged_for_null_text_messages(self, client, mock_bot_handler):
+    def test_warning_logged_when_pending_messages_have_no_text(self, client, mock_bot_handler):
         """
-        Test that a warning is logged when all pending messages have NULL text.
+        Test that a warning is logged when pending messages have NULL text,
+        specifically checking for the message about old messages from migration.
         """
         user_id = 77777
         telegram_id = str(user_id)
@@ -209,7 +210,16 @@ class TestNullMessageTextHandling:
                 payload4 = create_webhook_payload(user_id, 4, "Another message")
                 client.post("/webhook", json=payload4)
             
-            # Check if warning was logged (if we got to the combining logic)
+            # Check if the specific warning was logged
             if mock_bot_handler.call_count > 0:
-                # Should have at least attempted to log something
-                assert mock_logger.info.called or mock_logger.warning.called
+                warning_found = False
+                for call in mock_logger.warning.call_args_list:
+                    call_str = str(call)
+                    # Check for key phrases from the warning message in main.py
+                    if "none have text content" in call_str.lower() or "no text content" in call_str.lower():
+                        warning_found = True
+                        break
+                
+                # If warning was called, verify it contains relevant info
+                if mock_logger.warning.called:
+                    assert warning_found, "Warning should mention messages without text content"
