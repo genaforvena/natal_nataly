@@ -1599,6 +1599,7 @@ async def handle_telegram_update(update: dict):
     message_id = None
     processing_successful = False
     is_command = False
+    message_sent_successfully = False
     
     try:
         # Extract message data
@@ -1635,23 +1636,26 @@ async def handle_telegram_update(update: dict):
                 is_command = True
                 # Create send_msg helper function for command handlers
                 async def send_msg(msg):
+                    nonlocal message_sent_successfully
                     await send_telegram_message(chat_id, msg)
+                    message_sent_successfully = True
                 
                 # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
-                    processing_successful = True
+                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Check for user transparency commands
                 if await handle_user_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
-                    processing_successful = True
+                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
+                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
                     processing_successful = True
                     return {"ok": True}
@@ -1659,12 +1663,16 @@ async def handle_telegram_update(update: dict):
                 # Handle /reset_thread command
                 if text.startswith("/reset_thread"):
                     await handle_reset_thread_command(session, user, chat_id)
+                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
                     processing_successful = True
                     return {"ok": True}
             
-            # Route message based on state
+            # Route message based on state - this should send a message back
             await route_message(session, user, chat_id, text)
+            # Assume message was sent if route_message completes without exception
+            # TODO: For more robust tracking, route_message should return success status
+            message_sent_successfully = True
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
             processing_successful = True
@@ -1676,10 +1684,11 @@ async def handle_telegram_update(update: dict):
     except Exception as e:
         logger.exception(f"Critical error handling update: {e}")
         # Don't mark as successful on exception
+        # Messages will remain pending and can be retried
         return {"ok": True}
     finally:
-        # Mark messages as replied after successful processing
-        if processing_successful and telegram_id is not None:
+        # Mark messages as replied ONLY if we successfully sent a message
+        if processing_successful and message_sent_successfully and telegram_id is not None:
             if is_command and message_id is not None:
                 # Commands only mark the current message (don't process pending messages)
                 mark_message_as_replied(telegram_id, message_id)
@@ -1689,3 +1698,8 @@ async def handle_telegram_update(update: dict):
                 marked_count = mark_all_pending_as_replied(telegram_id)
                 if marked_count > 0:
                     logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")
+        elif processing_successful and not message_sent_successfully:
+            logger.warning(
+                f"Processing completed but no message sent to user {telegram_id}. "
+                f"Messages remain pending and will be retried."
+            )
