@@ -68,7 +68,10 @@ def sample_webhook_data():
 class TestWebhookSecretToken:
     """Tests for webhook secret token verification."""
     
-    def test_webhook_without_secret_token_env_accepts_any_request(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_without_secret_token_env_accepts_any_request(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that webhook works normally when TELEGRAM_SECRET_TOKEN is not configured."""
         # Ensure no secret token is set
         with patch.dict(os.environ, {}, clear=False):
@@ -81,7 +84,10 @@ class TestWebhookSecretToken:
             assert result.get("ok") is True
             assert mock_bot_handler.call_count == 1
     
-    def test_webhook_with_secret_token_env_and_valid_header_succeeds(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_with_secret_token_env_and_valid_header_succeeds(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that webhook accepts requests with valid secret token."""
         secret_token = "test_secret_token_12345"
         
@@ -97,7 +103,10 @@ class TestWebhookSecretToken:
             assert result.get("error") is None
             assert mock_bot_handler.call_count == 1
     
-    def test_webhook_with_secret_token_env_and_invalid_header_rejects(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_with_secret_token_env_and_invalid_header_rejects(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that webhook rejects requests with invalid secret token."""
         secret_token = "correct_secret_token"
         wrong_token = "wrong_secret_token"
@@ -115,7 +124,10 @@ class TestWebhookSecretToken:
             # Bot handler should not be called
             assert mock_bot_handler.call_count == 0
     
-    def test_webhook_with_secret_token_env_and_missing_header_rejects(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_with_secret_token_env_and_missing_header_rejects(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that webhook rejects requests with missing secret token header."""
         secret_token = "required_secret_token"
         
@@ -129,7 +141,10 @@ class TestWebhookSecretToken:
             # Bot handler should not be called
             assert mock_bot_handler.call_count == 0
     
-    def test_webhook_with_secret_token_env_and_empty_header_rejects(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_with_secret_token_env_and_empty_header_rejects(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that webhook rejects requests with empty secret token header."""
         secret_token = "required_secret_token"
         
@@ -146,7 +161,10 @@ class TestWebhookSecretToken:
             # Bot handler should not be called
             assert mock_bot_handler.call_count == 0
     
-    def test_webhook_secret_token_is_case_sensitive(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_secret_token_is_case_sensitive(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that secret token comparison is case-sensitive."""
         secret_token = "CaseSensitiveToken"
         wrong_case_token = "casesensitivetoken"
@@ -163,7 +181,10 @@ class TestWebhookSecretToken:
             assert result.get("error") == "Unauthorized"
             assert mock_bot_handler.call_count == 0
     
-    def test_webhook_secret_token_allows_special_characters(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_webhook_secret_token_allows_special_characters(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that secret tokens with special characters work correctly."""
         secret_token = "token!@#$%^&*()_+-={}[]|:;<>?,./"
         
@@ -178,7 +199,10 @@ class TestWebhookSecretToken:
             assert result.get("ok") is True
             assert mock_bot_handler.call_count == 1
     
-    def test_backward_compatibility_empty_secret_token_env(self, client, mock_bot_handler, mock_dedup, mock_throttle, sample_webhook_data):
+    def test_backward_compatibility_empty_secret_token_env(
+        self, client, mock_bot_handler, mock_dedup, mock_throttle,
+        sample_webhook_data
+    ):
         """Test that empty TELEGRAM_SECRET_TOKEN env var disables verification."""
         with patch.dict(os.environ, {"TELEGRAM_SECRET_TOKEN": ""}):
             # No header provided
