@@ -7,6 +7,7 @@ with both text export (AstroSeek-compatible format) and structured JSON data.
 
 import logging
 from typing import Dict, Any, Optional
+from functools import lru_cache
 from kerykeion import AstrologicalSubject, NatalAspects
 from timezonefinder import TimezoneFinder
 
@@ -14,6 +15,28 @@ logger = logging.getLogger(__name__)
 
 # Initialize TimezoneFinder once at module level for better performance
 _timezone_finder = TimezoneFinder()
+
+
+@lru_cache(maxsize=1000)
+def get_timezone_cached(lat: float, lng: float) -> Optional[str]:
+    """
+    Get timezone for coordinates with caching.
+    
+    Uses LRU cache to avoid repeated lookups for the same coordinates.
+    Cache size of 1000 should be sufficient for typical usage patterns.
+    
+    Args:
+        lat: Latitude
+        lng: Longitude
+        
+    Returns:
+        Timezone string or None if not found
+    """
+    # Round coordinates to 2 decimal places for better cache hits
+    # (precision of ~1.1km which is fine for timezone lookups)
+    lat_rounded = round(lat, 2)
+    lng_rounded = round(lng, 2)
+    return _timezone_finder.timezone_at(lat=lat_rounded, lng=lng_rounded)
 
 # Zodiac signs for reference
 SIGNS = [
@@ -118,9 +141,9 @@ def build_natal_chart_text_and_json(
     logger.info(f"Building natal chart using Kerykeion for {city}, {nation} ({lat}, {lng})")
     
     try:
-        # Determine timezone if not provided
+        # Determine timezone if not provided (with caching)
         if tz_str is None:
-            tz_str = _timezone_finder.timezone_at(lat=lat, lng=lng)
+            tz_str = get_timezone_cached(lat, lng)
             if tz_str is None:
                 tz_str = "UTC"  # Fallback to UTC if timezone can't be determined
                 logger.warning(f"Could not determine timezone for {lat}, {lng}, using UTC")

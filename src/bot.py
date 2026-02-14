@@ -230,7 +230,7 @@ def get_or_create_user(session, telegram_id: str) -> User:
         raise
 
 
-def update_user_state(session, telegram_id: str, state: str, natal_chart_json: str = None, missing_fields: str = None):
+def update_user_state(session, telegram_id: str, state: str, natal_chart_json: str = None, missing_fields: str = None, commit: bool = True):
     """Update user state and optional fields"""
     logger.debug(f"Updating user state: telegram_id={telegram_id}, new_state={state}")
     try:
@@ -242,7 +242,8 @@ def update_user_state(session, telegram_id: str, state: str, natal_chart_json: s
             if missing_fields is not None:
                 user.missing_fields = missing_fields
             user.last_seen = datetime.now(timezone.utc)
-            session.commit()
+            if commit:
+                session.commit()
             logger.info(f"User state updated: {telegram_id} -> {state}")
         else:
             logger.warning(f"User {telegram_id} not found for state update")
@@ -251,7 +252,7 @@ def update_user_state(session, telegram_id: str, state: str, natal_chart_json: s
         raise
 
 
-def save_birth_data(session, telegram_id: str, birth_data: dict):
+def save_birth_data(session, telegram_id: str, birth_data: dict, commit: bool = True):
     """Save birth data to database"""
     logger.debug(f"Saving birth data for telegram_id={telegram_id}")
     try:
@@ -263,7 +264,8 @@ def save_birth_data(session, telegram_id: str, birth_data: dict):
             lng=birth_data["lng"]
         )
         session.add(birth_record)
-        session.commit()
+        if commit:
+            session.commit()
         logger.info(f"Birth data saved successfully for telegram_id={telegram_id}")
         return birth_record
     except Exception as e:
@@ -427,6 +429,22 @@ def generate_natal_chart_kerykeion(birth_data: dict) -> dict:
         raise Exception(f"Failed to generate natal chart: {str(e)}")
 
 
+async def generate_natal_chart_kerykeion_async(birth_data: dict) -> dict:
+    """
+    Async version of generate_natal_chart_kerykeion that runs in thread pool executor.
+    
+    Generate natal chart using Kerykeion with both text export and structured JSON.
+    
+    Args:
+        birth_data: Dictionary with keys: dob (YYYY-MM-DD), time (HH:MM), lat, lng
+    
+    Returns:
+        Dictionary with chart_json (structured data compatible with old format)
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, generate_natal_chart_kerykeion, birth_data)
+
+
 # ============================================================================
 # PROFILE MANAGEMENT FUNCTIONS
 # ============================================================================
@@ -458,7 +476,7 @@ def get_active_profile(session, user: User):
 
 
 def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dict,
-                   profile_name: str = None, profile_type: str = "self") -> AstroProfile:
+                   profile_name: str = None, profile_type: str = "self", commit: bool = True) -> AstroProfile:
     """
     Create a new AstroProfile.
     
@@ -469,6 +487,7 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
         natal_chart: Generated natal chart dict
         profile_name: Optional name for the profile
         profile_type: Type of profile (self|partner|friend|analysis)
+        commit: Whether to commit immediately (default True)
         
     Returns:
         Created AstroProfile object
@@ -483,7 +502,8 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
             natal_chart_json=json.dumps(natal_chart)
         )
         session.add(profile)
-        session.commit()
+        if commit:
+            session.commit()
         logger.info(f"Profile created successfully: id={profile.id}")
         return profile
     except Exception as e:
@@ -491,7 +511,7 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
         raise
 
 
-def set_active_profile(session, user: User, profile_id: int):
+def set_active_profile(session, user: User, profile_id: int, commit: bool = True):
     """
     Set the active profile for a user.
     
@@ -499,6 +519,7 @@ def set_active_profile(session, user: User, profile_id: int):
         session: Database session
         user: User object
         profile_id: ID of the profile to activate
+        commit: Whether to commit immediately (default True)
     """
     logger.info(f"Setting active profile {profile_id} for user {user.telegram_id}")
     try:
@@ -513,7 +534,8 @@ def set_active_profile(session, user: User, profile_id: int):
             raise ValueError("Profile not found")
         
         user.active_profile_id = profile_id
-        session.commit()
+        if commit:
+            session.commit()
         logger.info("Active profile set successfully")
     except Exception as e:
         logger.exception(f"Error setting active profile: {e}")
@@ -596,6 +618,7 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
 def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict) -> AstroProfile:
     """
     Helper function to create a new profile, set it as active, and update user state.
+    All operations are batched and committed together for better performance.
     
     Args:
         session: Database session
@@ -608,25 +631,30 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
     """
     logger.info(f"Creating and activating profile for user {user.telegram_id}")
     
-    # Save birth data for legacy support
-    birth_record = save_birth_data(session, user.telegram_id, birth_data)
+    # Save birth data (no commit)
+    birth_record = save_birth_data(session, user.telegram_id, birth_data, commit=False)
     
-    # Create new AstroProfile
+    # Create new AstroProfile (no commit)
     profile = create_profile(
         session, 
         user.telegram_id, 
         birth_data, 
         chart,
         profile_name=None,  # Default profile has no special name
-        profile_type="self"
+        profile_type="self",
+        commit=False
     )
     
-    # Set as active profile
-    set_active_profile(session, user, profile.id)
+    # Set as active profile (no commit)
+    set_active_profile(session, user, profile.id, commit=False)
     
-    # Store natal chart in user for legacy compatibility
+    # Store natal chart in user for legacy compatibility (no commit)
     chart_json = json.dumps(chart)
-    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, commit=False)
+    
+    # Single commit for all operations
+    session.commit()
+    logger.info(f"Profile created and activated in batch transaction")
     
     return profile
 
@@ -778,9 +806,9 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             birth_data = json.loads(user.pending_birth_data)
             normalized_birth_data = json.loads(user.pending_normalized_data)
             
-            # Generate natal chart using Kerykeion
+            # Generate natal chart using Kerykeion (async)
             logger.info(f"Generating natal chart for user {user.telegram_id}")
-            chart = generate_natal_chart_kerykeion(birth_data)
+            chart = await generate_natal_chart_kerykeion_async(birth_data)
             
             # Get original input from chart
             original_input = chart.get("original_input", format_original_input(birth_data))
@@ -812,13 +840,41 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             )
             session.add(user_chart)
             
-            # Create profile and set as active
-            create_and_activate_profile(session, user, birth_data, chart)
+            # Create profile and set as active (batched operations, no commit yet since we pass commit=False)
+            # Note: We need to flush first to get profile.id for set_active_profile
+            session.flush()
+            
+            # Save birth data (no commit)
+            birth_record = save_birth_data(session, user.telegram_id, birth_data, commit=False)
+            
+            # Create new AstroProfile (no commit)
+            profile = create_profile(
+                session, 
+                user.telegram_id, 
+                birth_data, 
+                chart,
+                profile_name=None,
+                profile_type="self",
+                commit=False
+            )
+            
+            # Flush to get profile.id
+            session.flush()
+            
+            # Set as active profile (no commit)
+            set_active_profile(session, user, profile.id, commit=False)
+            
+            # Store natal chart in user for legacy compatibility (no commit)
+            chart_json = json.dumps(chart)
+            update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, commit=False)
             
             # Clear pending data
             user.pending_birth_data = None
             user.pending_normalized_data = None
+            
+            # Single commit for all operations
             session.commit()
+            logger.info(f"Chart confirmed and created in batch transaction for user {user.telegram_id}")
             
             # Send success message
             await send_telegram_message(
@@ -1026,9 +1082,9 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
                 logger.warning(f"Could not send incomplete data message to chat_id={chat_id}, chat may be invalid")
             return
         
-        # Generate natal chart using Kerykeion
+        # Generate natal chart using Kerykeion (async)
         logger.info(f"Generating natal chart for user {user.telegram_id}")
-        chart = generate_natal_chart_kerykeion(birth_data)
+        chart = await generate_natal_chart_kerykeion_async(birth_data)
         
         # Create profile and set as active
         create_and_activate_profile(session, user, birth_data, chart)
