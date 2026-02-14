@@ -46,6 +46,7 @@ from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
 from src.services.intent_router import detect_request_type
 from src.prompt_loader import load_response_prompt
+from src.message_cache import mark_reply_sent
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1562,9 +1563,10 @@ async def handle_telegram_update(update: dict):
         
         chat_id = message["chat"]["id"]
         telegram_id = str(message["from"]["id"])
+        message_id = message.get("message_id")
         text = message.get("text", "")
         
-        logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
+        logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}, message_id={message_id}")
         logger.debug(f"Message length: {len(text)} characters")
         
         # Get or create user
@@ -1581,27 +1583,43 @@ async def handle_telegram_update(update: dict):
                 # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
+                    # Mark reply as sent if we have a valid message_id
+                    if message_id is not None:
+                        mark_reply_sent(telegram_id, message_id)
                     return {"ok": True}
                 
                 # Check for user transparency commands
                 if await handle_user_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
+                    # Mark reply as sent if we have a valid message_id
+                    if message_id is not None:
+                        mark_reply_sent(telegram_id, message_id)
                     return {"ok": True}
                 
                 # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
+                    # Mark reply as sent if we have a valid message_id
+                    if message_id is not None:
+                        mark_reply_sent(telegram_id, message_id)
                     return {"ok": True}
                 
                 # Handle /reset_thread command
                 if text.startswith("/reset_thread"):
                     await handle_reset_thread_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
+                    # Mark reply as sent if we have a valid message_id
+                    if message_id is not None:
+                        mark_reply_sent(telegram_id, message_id)
                     return {"ok": True}
             
             # Route message based on state
             await route_message(session, user, chat_id, text)
+            
+            # Mark reply as sent after successful processing
+            if message_id is not None:
+                mark_reply_sent(telegram_id, message_id)
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
         finally:

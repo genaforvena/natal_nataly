@@ -3,8 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
-from src.message_cache import mark_if_new
-from src.message_throttler import should_process_message
+from src.message_cache import mark_if_new, has_pending_reply
 
 
 class HealthCheckFilter(logging.Filter):
@@ -93,21 +92,14 @@ async def telegram_webhook(request: Request):
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
             
-            # Apply message throttling (15-second window)
-            should_process, messages_to_process = should_process_message(telegram_id_str, message_text)
-            
-            if not should_process:
-                # Message is being throttled - will be processed with next batch
-                logger.info(f"Message {message_id} from user {telegram_id_str} throttled")
+            # Apply reply-based throttling: if user has pending messages awaiting reply,
+            # ignore this new message (it will only get processed once for all pending messages)
+            if has_pending_reply(telegram_id_str):
+                logger.info(
+                    f"Message {message_id} from user {telegram_id_str} throttled - "
+                    f"user has pending messages awaiting reply"
+                )
                 return {"ok": True, "throttled": True}
-            
-            # If we have multiple messages grouped, combine them
-            if len(messages_to_process) > 1:
-                logger.info(f"Processing {len(messages_to_process)} grouped messages for user {telegram_id_str}")
-                # Combine messages with clear separation
-                combined_text = "\n\n---\n\n".join(messages_to_process)
-                # Update the message text in the data structure
-                data["message"]["text"] = combined_text
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")

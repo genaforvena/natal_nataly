@@ -245,3 +245,76 @@ def clear_cache() -> None:
                 session.close()
         except Exception as e:
             logger.error(f"Error clearing database cache: {e}")
+
+
+def mark_reply_sent(telegram_id: str, message_id: int) -> bool:
+    """
+    Mark that a reply has been sent for a specific message.
+    
+    Args:
+        telegram_id: Telegram user ID
+        message_id: Telegram message ID
+        
+    Returns:
+        True if successfully marked, False otherwise
+    """
+    session = SessionLocal()
+    try:
+        result = session.query(ProcessedMessage).filter_by(
+            telegram_id=telegram_id,
+            message_id=message_id
+        ).update({
+            'reply_sent': True,
+            'reply_sent_at': datetime.now(timezone.utc)
+        })
+        session.commit()
+        
+        if result > 0:
+            logger.debug(
+                f"Marked reply as sent for message {message_id} from user {telegram_id}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"Could not mark reply as sent for message {message_id} from user {telegram_id} - message not found"
+            )
+            return False
+    except Exception as e:
+        logger.exception(f"Error marking reply as sent: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+
+def has_pending_reply(telegram_id: str) -> bool:
+    """
+    Check if there are any messages from this user that haven't been replied to yet.
+    
+    Args:
+        telegram_id: Telegram user ID
+        
+    Returns:
+        True if there are pending messages (reply not sent), False otherwise
+    """
+    session = SessionLocal()
+    try:
+        # Check if there are any messages that haven't been replied to
+        pending_count = session.query(ProcessedMessage).filter_by(
+            telegram_id=telegram_id,
+            reply_sent=False
+        ).count()
+        
+        result = pending_count > 0
+        if result:
+            logger.debug(
+                f"User {telegram_id} has {pending_count} pending message(s) awaiting reply"
+            )
+        
+        return result
+    except Exception as e:
+        logger.exception(f"Error checking pending replies: {e}")
+        # On error, return False to allow processing (fail open)
+        return False
+    finally:
+        session.close()
