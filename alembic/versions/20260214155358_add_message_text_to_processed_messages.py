@@ -25,6 +25,17 @@ def upgrade() -> None:
         'processed_messages',
         sa.Column('message_text', sa.Text(), nullable=True)
     )
+    
+    # Data migration: Mark all existing pending messages (without text) as replied
+    # This prevents old messages from blocking new messages after the migration
+    # Old messages can't be combined since they have no text stored
+    op.execute("""
+        UPDATE processed_messages 
+        SET reply_sent = TRUE, 
+            reply_sent_at = CURRENT_TIMESTAMP 
+        WHERE reply_sent = FALSE 
+        AND message_text IS NULL
+    """)
 
 
 def downgrade() -> None:

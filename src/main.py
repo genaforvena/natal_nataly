@@ -118,16 +118,26 @@ async def telegram_webhook(request: Request):
                 # Multiple messages to process together (including current one)
                 all_texts = [msg.message_text for msg in pending_messages if msg.message_text]
                 
-                # Combine messages with separator
-                combined_text = "\n\n---\n\n".join(all_texts)
-                
-                logger.info(
-                    f"Combining {len(pending_messages)} pending message(s) "
-                    f"for user {telegram_id_str}"
-                )
-                
-                # Update the message text in the data structure to process combined message
-                data["message"]["text"] = combined_text
+                # Only combine if we have actual text to combine
+                # If all pending messages have NULL text (e.g., old messages from before migration),
+                # don't override the current message text
+                if all_texts:
+                    # Combine messages with separator
+                    combined_text = "\n\n---\n\n".join(all_texts)
+                    
+                    logger.info(
+                        f"Combining {len(pending_messages)} pending message(s) "
+                        f"({len(all_texts)} with text) for user {telegram_id_str}"
+                    )
+                    
+                    # Update the message text in the data structure to process combined message
+                    data["message"]["text"] = combined_text
+                else:
+                    logger.warning(
+                        f"Found {len(pending_messages)} pending message(s) for user {telegram_id_str} "
+                        f"but none have text content (possibly old messages from before migration). "
+                        f"Processing current message only."
+                    )
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
