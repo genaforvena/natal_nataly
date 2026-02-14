@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db, SessionLocal
@@ -61,7 +62,6 @@ async def startup():
     try:
         session = SessionLocal()
         try:
-            from datetime import datetime, timezone
             stale_messages = session.query(ProcessedMessage).filter_by(
                 reply_sent=False
             ).all()
@@ -80,7 +80,7 @@ async def startup():
                 for user_id, count in user_counts.items():
                     logger.info(f"  User {user_id}: {count} stale message(s)")
                 
-                # Mark all as replied
+                # Mark all as replied using bulk update for efficiency
                 now = datetime.now(timezone.utc)
                 session.query(ProcessedMessage).filter_by(
                     reply_sent=False
