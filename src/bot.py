@@ -12,6 +12,12 @@ from src.llm import (
     classify_intent,
     generate_assistant_response,
     interpret_transits,
+    extract_birth_data_async,
+    generate_clarification_question_async,
+    interpret_chart_async,
+    classify_intent_async,
+    generate_assistant_response_async,
+    interpret_transits_async,
     MODEL
 )
 from src.db import SessionLocal
@@ -44,7 +50,7 @@ from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIG
 from src.thread_manager import add_message_to_thread, get_conversation_thread, reset_thread, get_thread_summary
 from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
-from src.services.intent_router import detect_request_type
+from src.services.intent_router import detect_request_type, detect_request_type_async
 from src.prompt_loader import load_response_prompt
 from src.message_cache import mark_all_pending_as_replied
 
@@ -225,7 +231,11 @@ def get_or_create_user(session, telegram_id: str) -> User:
         raise
 
 
-def update_user_state(session, telegram_id: str, state: str, natal_chart_json: str = None, missing_fields: str = None):
+def update_user_state(
+    session, telegram_id: str, state: str,
+    natal_chart_json: str = None, missing_fields: str = None,
+    commit: bool = True
+):
     """Update user state and optional fields"""
     logger.debug(f"Updating user state: telegram_id={telegram_id}, new_state={state}")
     try:
@@ -237,7 +247,8 @@ def update_user_state(session, telegram_id: str, state: str, natal_chart_json: s
             if missing_fields is not None:
                 user.missing_fields = missing_fields
             user.last_seen = datetime.now(timezone.utc)
-            session.commit()
+            if commit:
+                session.commit()
             logger.info(f"User state updated: {telegram_id} -> {state}")
         else:
             logger.warning(f"User {telegram_id} not found for state update")
@@ -246,7 +257,7 @@ def update_user_state(session, telegram_id: str, state: str, natal_chart_json: s
         raise
 
 
-def save_birth_data(session, telegram_id: str, birth_data: dict):
+def save_birth_data(session, telegram_id: str, birth_data: dict, commit: bool = True):
     """Save birth data to database"""
     logger.debug(f"Saving birth data for telegram_id={telegram_id}")
     try:
@@ -258,7 +269,8 @@ def save_birth_data(session, telegram_id: str, birth_data: dict):
             lng=birth_data["lng"]
         )
         session.add(birth_record)
-        session.commit()
+        if commit:
+            session.commit()
         logger.info(f"Birth data saved successfully for telegram_id={telegram_id}")
         return birth_record
     except Exception as e:
@@ -422,6 +434,22 @@ def generate_natal_chart_kerykeion(birth_data: dict) -> dict:
         raise Exception(f"Failed to generate natal chart: {str(e)}")
 
 
+async def generate_natal_chart_kerykeion_async(birth_data: dict) -> dict:
+    """
+    Async version of generate_natal_chart_kerykeion that runs in thread pool executor.
+    
+    Generate natal chart using Kerykeion with both text export and structured JSON.
+    
+    Args:
+        birth_data: Dictionary with keys: dob (YYYY-MM-DD), time (HH:MM), lat, lng
+    
+    Returns:
+        Dictionary with chart_json (structured data compatible with old format)
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, generate_natal_chart_kerykeion, birth_data)
+
+
 # ============================================================================
 # PROFILE MANAGEMENT FUNCTIONS
 # ============================================================================
@@ -453,7 +481,7 @@ def get_active_profile(session, user: User):
 
 
 def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dict,
-                   profile_name: str = None, profile_type: str = "self") -> AstroProfile:
+                   profile_name: str = None, profile_type: str = "self", commit: bool = True) -> AstroProfile:
     """
     Create a new AstroProfile.
     
@@ -464,6 +492,7 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
         natal_chart: Generated natal chart dict
         profile_name: Optional name for the profile
         profile_type: Type of profile (self|partner|friend|analysis)
+        commit: Whether to commit immediately (default True)
         
     Returns:
         Created AstroProfile object
@@ -478,7 +507,8 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
             natal_chart_json=json.dumps(natal_chart)
         )
         session.add(profile)
-        session.commit()
+        if commit:
+            session.commit()
         logger.info(f"Profile created successfully: id={profile.id}")
         return profile
     except Exception as e:
@@ -486,7 +516,7 @@ def create_profile(session, telegram_id: str, birth_data: dict, natal_chart: dic
         raise
 
 
-def set_active_profile(session, user: User, profile_id: int):
+def set_active_profile(session, user: User, profile_id: int, commit: bool = True):
     """
     Set the active profile for a user.
     
@@ -494,6 +524,7 @@ def set_active_profile(session, user: User, profile_id: int):
         session: Database session
         user: User object
         profile_id: ID of the profile to activate
+        commit: Whether to commit immediately (default True)
     """
     logger.info(f"Setting active profile {profile_id} for user {user.telegram_id}")
     try:
@@ -508,7 +539,8 @@ def set_active_profile(session, user: User, profile_id: int):
             raise ValueError("Profile not found")
         
         user.active_profile_id = profile_id
-        session.commit()
+        if commit:
+            session.commit()
         logger.info("Active profile set successfully")
     except Exception as e:
         logger.exception(f"Error setting active profile: {e}")
@@ -588,40 +620,51 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
         raise
 
 
-def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict) -> AstroProfile:
+def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict, commit: bool = True) -> AstroProfile:
     """
     Helper function to create a new profile, set it as active, and update user state.
+    All operations are batched and committed together for better performance.
     
     Args:
         session: Database session
         user: User object
         birth_data: Birth data dict
         chart: Generated natal chart dict
+        commit: Whether to commit the transaction (default True)
         
     Returns:
         Created AstroProfile
     """
     logger.info(f"Creating and activating profile for user {user.telegram_id}")
     
-    # Save birth data for legacy support
-    birth_record = save_birth_data(session, user.telegram_id, birth_data)
+    # Save birth data (no commit)
+    birth_record = save_birth_data(session, user.telegram_id, birth_data, commit=False)
     
-    # Create new AstroProfile
+    # Create new AstroProfile (no commit)
     profile = create_profile(
         session, 
         user.telegram_id, 
         birth_data, 
         chart,
         profile_name=None,  # Default profile has no special name
-        profile_type="self"
+        profile_type="self",
+        commit=False
     )
     
-    # Set as active profile
-    set_active_profile(session, user, profile.id)
+    # Flush to get profile.id
+    session.flush()
     
-    # Store natal chart in user for legacy compatibility
+    # Set as active profile (no commit)
+    set_active_profile(session, user, profile.id, commit=False)
+    
+    # Store natal chart in user for legacy compatibility (no commit)
     chart_json = json.dumps(chart)
-    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json)
+    update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, commit=False)
+    
+    # Commit if requested
+    if commit:
+        session.commit()
+        logger.info("Profile created and activated in batch transaction")
     
     return profile
 
@@ -643,7 +686,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     try:
         # Use LLM to extract birth data from free-form text
         # Pass conversation history to accumulate data from previous messages
-        birth_data = extract_birth_data(text, conversation_history=conversation_history)
+        birth_data = await extract_birth_data_async(text, conversation_history=conversation_history)
         
         # Stage 2: Log parsed data from LLM
         log_pipeline_stage_2_parsed_data(session_id, birth_data)
@@ -658,7 +701,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             
             # Generate clarification question with conversation context
             # and user profile
-            question = generate_clarification_question(
+            question = await generate_clarification_question_async(
                 missing, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -773,9 +816,9 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
             birth_data = json.loads(user.pending_birth_data)
             normalized_birth_data = json.loads(user.pending_normalized_data)
             
-            # Generate natal chart using Kerykeion
+            # Generate natal chart using Kerykeion (async)
             logger.info(f"Generating natal chart for user {user.telegram_id}")
-            chart = generate_natal_chart_kerykeion(birth_data)
+            chart = await generate_natal_chart_kerykeion_async(birth_data)
             
             # Get original input from chart
             original_input = chart.get("original_input", format_original_input(birth_data))
@@ -806,14 +849,18 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                 is_active=True
             )
             session.add(user_chart)
+            session.flush()  # Flush to persist user_chart
             
-            # Create profile and set as active
-            create_and_activate_profile(session, user, birth_data, chart)
+            # Create profile and set as active (no commit yet)
+            profile = create_and_activate_profile(session, user, birth_data, chart, commit=False)
             
             # Clear pending data
             user.pending_birth_data = None
             user.pending_normalized_data = None
+            
+            # Single commit for all operations
             session.commit()
+            logger.info(f"Chart confirmed and created in batch transaction for user {user.telegram_id}")
             
             # Send success message
             await send_telegram_message(
@@ -984,7 +1031,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     try:
         # Extract data again from the clarification message
         # Pass conversation history to accumulate data from all previous messages
-        birth_data = extract_birth_data(text, conversation_history=conversation_history)
+        birth_data = await extract_birth_data_async(text, conversation_history=conversation_history)
         
         # Check what was previously missing
         previously_missing = user.missing_fields.split(",") if user.missing_fields else []
@@ -999,7 +1046,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
             # Ask again with conversation context and user profile
-            question = generate_clarification_question(
+            question = await generate_clarification_question_async(
                 still_missing, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -1021,9 +1068,9 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
                 logger.warning(f"Could not send incomplete data message to chat_id={chat_id}, chat may be invalid")
             return
         
-        # Generate natal chart using Kerykeion
+        # Generate natal chart using Kerykeion (async)
         logger.info(f"Generating natal chart for user {user.telegram_id}")
-        chart = generate_natal_chart_kerykeion(birth_data)
+        chart = await generate_natal_chart_kerykeion_async(birth_data)
         
         # Create profile and set as active
         create_and_activate_profile(session, user, birth_data, chart)
@@ -1116,7 +1163,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         prompt_name = "assistant_response"
         if user.assistant_mode:
             logger.info("Using assistant mode for response")
-            reading = generate_assistant_response(
+            reading = await generate_assistant_response_async(
                 context, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -1124,7 +1171,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         else:
             # Fallback to legacy interpret_chart
             logger.info("Using legacy chart interpretation")
-            reading = interpret_chart(chart, question=text, conversation_history=conversation_history, user_profile=user_profile)
+            reading = await interpret_chart_async(
+                chart, question=text,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            )
             prompt_name = "astrologer_chat"
         
         # Add user message and assistant response to conversation thread after generation
@@ -1357,7 +1408,7 @@ async def handle_meta_conversation(session, user: User, chat_id: int, text: str)
         context = build_agent_context(session, user, profile)
         
         # Use assistant to respond naturally
-        reading = generate_assistant_response(context, text)
+        reading = await generate_assistant_response_async(context, text)
         await send_telegram_message(chat_id, reading)
         
     except Exception as e:
@@ -1380,7 +1431,7 @@ async def handle_general_question(session, user: User, chat_id: int, text: str):
         context = build_agent_context(session, user, profile)
         
         # Use assistant to explain general astrology
-        reading = generate_assistant_response(context, text)
+        reading = await generate_assistant_response_async(context, text)
         await send_telegram_message(chat_id, reading)
         
     except Exception as e:
@@ -1439,7 +1490,7 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         logger.info("Transits calculated successfully")
         
         # Get LLM interpretation
-        reading = interpret_transits(chart, transits_text, text)
+        reading = await interpret_transits_async(chart, transits_text, text)
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
@@ -1499,8 +1550,8 @@ async def route_message(session, user: User, chat_id: int, text: str):
     # For users with charts, use intent-based routing for conversational flow
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
-            # Use LLM-based intent detection
-            intent_type = detect_request_type(text)
+            # Use async LLM-based intent detection
+            intent_type = await detect_request_type_async(text)
             
             logger.info(f"Intent detected: {intent_type}")
             
