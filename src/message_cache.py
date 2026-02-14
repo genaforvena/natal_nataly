@@ -32,7 +32,7 @@ CACHE_EXPIRY_HOURS = 24  # How long to keep entries in memory cache
 # Note: Database entries are kept indefinitely (no expiry/deletion)
 
 
-def mark_if_new(telegram_id: str, message_id: int) -> bool:
+def mark_if_new(telegram_id: str, message_id: int, message_text: str = None) -> bool:
     """
     Atomically check if a message is new and mark it as processed.
     
@@ -47,6 +47,7 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
     Args:
         telegram_id: Telegram user ID
         message_id: Telegram message ID
+        message_text: Optional message text content (for combining throttled messages)
         
     Returns:
         True if the message was new and has been marked as processed,
@@ -114,7 +115,8 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
             new_entry = ProcessedMessage(
                 telegram_id=telegram_id,
                 message_id=message_id,
-                processed_at=now
+                processed_at=now,
+                message_text=message_text
             )
             session.add(new_entry)
             try:
@@ -317,5 +319,73 @@ def has_pending_reply(telegram_id: str) -> bool:
         logger.exception(f"Error checking pending replies: {e}")
         # On error, return False to allow processing (fail open)
         return False
+    finally:
+        session.close()
+
+
+def get_pending_messages(telegram_id: str) -> list:
+    """
+    Get all pending messages (not replied yet) for a user with their text content.
+    
+    Args:
+        telegram_id: Telegram user ID
+        
+    Returns:
+        List of tuples (message_id, message_text, processed_at) ordered by processed_at
+    """
+    session = SessionLocal()
+    try:
+        messages = session.query(
+            ProcessedMessage.message_id,
+            ProcessedMessage.message_text,
+            ProcessedMessage.processed_at
+        ).filter_by(
+            telegram_id=telegram_id,
+            reply_sent=False
+        ).order_by(ProcessedMessage.processed_at).all()
+        
+        logger.debug(
+            f"Retrieved {len(messages)} pending message(s) for user {telegram_id}"
+        )
+        
+        return [(msg.message_id, msg.message_text, msg.processed_at) for msg in messages]
+    except Exception as e:
+        logger.exception(f"Error retrieving pending messages: {e}")
+        return []
+    finally:
+        session.close()
+
+
+def mark_all_pending_as_replied(telegram_id: str) -> int:
+    """
+    Mark all pending messages for a user as replied.
+    
+    Args:
+        telegram_id: Telegram user ID
+        
+    Returns:
+        Number of messages marked as replied
+    """
+    session = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        result = session.query(ProcessedMessage).filter_by(
+            telegram_id=telegram_id,
+            reply_sent=False
+        ).update({
+            'reply_sent': True,
+            'reply_sent_at': now
+        })
+        session.commit()
+        
+        logger.debug(
+            f"Marked {result} pending message(s) as replied for user {telegram_id}"
+        )
+        
+        return result
+    except Exception as e:
+        logger.exception(f"Error marking pending messages as replied: {e}")
+        session.rollback()
+        return 0
     finally:
         session.close()

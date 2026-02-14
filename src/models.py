@@ -80,6 +80,7 @@ class ProcessedMessage(Base):
     processed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     reply_sent = Column(Boolean, default=False, nullable=False, index=True)  # Track if bot replied to this message
     reply_sent_at = Column(DateTime, nullable=True)  # When the reply was sent
+    message_text = Column(Text, nullable=True)  # Store message text for combining throttled messages
     
     # Composite unique constraint to prevent duplicate entries at database level
     __table_args__ = (

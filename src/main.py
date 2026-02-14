@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
-from src.message_cache import mark_if_new, has_pending_reply, mark_reply_sent
+from src.message_cache import mark_if_new, has_pending_reply, mark_all_pending_as_replied, get_pending_messages
 
 
 class HealthCheckFilter(logging.Filter):
@@ -92,27 +92,44 @@ async def telegram_webhook(request: Request):
             # message gets counted as "pending" immediately after being added to DB
             if has_pending_reply(telegram_id_str):
                 # User has pending messages, throttle this one
-                # But still mark it in DB to prevent duplicate processing if retried
-                is_new = mark_if_new(telegram_id_str, message_id)
+                # Store it in DB with text for later combining, but DON'T mark as replied
+                is_new = mark_if_new(telegram_id_str, message_id, message_text)
                 if is_new:
-                    # Mark as "replied" to prevent this throttled message from blocking future messages.
-                    # Note: This is semantically "message is complete/resolved" rather than "reply was sent"
-                    # since throttled messages intentionally receive no reply.
-                    mark_reply_sent(telegram_id_str, message_id)
                     logger.info(
                         f"Message {message_id} from user {telegram_id_str} throttled - "
-                        f"user has pending messages awaiting reply"
+                        f"user has pending messages awaiting reply. Message will be combined with pending messages."
                     )
                 else:
                     logger.info(f"Duplicate throttled message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "throttled": True}
             
+            # No pending messages - this will be processed
+            # Retrieve any pending messages that arrived while checking (race condition edge case)
+            pending_messages = get_pending_messages(telegram_id_str)
+            
             # Now check if this specific message is a duplicate
-            is_new = mark_if_new(telegram_id_str, message_id)
+            is_new = mark_if_new(telegram_id_str, message_id, message_text)
             
             if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
+            
+            # If there are pending messages (edge case: arrived between checks), combine them
+            if pending_messages:
+                # Combine all pending messages with current message
+                all_texts = [msg[1] for msg in pending_messages if msg[1]]  # Get message_text from tuples
+                all_texts.append(message_text)
+                
+                # Combine messages with separator
+                combined_text = "\n\n---\n\n".join(filter(None, all_texts))
+                
+                logger.info(
+                    f"Combining {len(pending_messages)} pending message(s) with current message "
+                    f"for user {telegram_id_str}"
+                )
+                
+                # Update the message text in the data structure to process combined message
+                data["message"]["text"] = combined_text
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")

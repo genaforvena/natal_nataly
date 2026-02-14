@@ -46,7 +46,7 @@ from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
 from src.services.intent_router import detect_request_type
 from src.prompt_loader import load_response_prompt
-from src.message_cache import mark_reply_sent
+from src.message_cache import mark_all_pending_as_replied
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1625,6 +1625,9 @@ async def handle_telegram_update(update: dict):
         # Don't mark as successful on exception
         return {"ok": True}
     finally:
-        # Mark reply as sent only after successful processing
-        if processing_successful and telegram_id is not None and message_id is not None:
-            mark_reply_sent(telegram_id, message_id)
+        # Mark all pending messages as replied after successful processing
+        # This includes the current message and any throttled messages that were combined
+        if processing_successful and telegram_id is not None:
+            marked_count = mark_all_pending_as_replied(telegram_id)
+            if marked_count > 0:
+                logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")
