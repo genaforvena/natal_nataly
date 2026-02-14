@@ -297,13 +297,14 @@ def has_pending_reply(telegram_id: str) -> bool:
     Returns:
         True if there are pending messages (reply not sent), False otherwise
     """
+    from sqlalchemy import func
     session = SessionLocal()
     try:
-        # Check if there are any messages that haven't been replied to
-        pending_count = session.query(ProcessedMessage).filter_by(
+        # Use func.count() for better performance
+        pending_count = session.query(func.count()).select_from(ProcessedMessage).filter_by(
             telegram_id=telegram_id,
             reply_sent=False
-        ).count()
+        ).scalar()
         
         result = pending_count > 0
         if result:

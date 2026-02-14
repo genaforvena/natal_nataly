@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
-from src.message_cache import mark_if_new, has_pending_reply
+from src.message_cache import mark_if_new, has_pending_reply, mark_reply_sent
 
 
 class HealthCheckFilter(logging.Filter):
@@ -91,10 +91,18 @@ async def telegram_webhook(request: Request):
             # We do this BEFORE marking as new to avoid race condition where the current
             # message gets counted as "pending" immediately after being added to DB
             if has_pending_reply(telegram_id_str):
-                logger.info(
-                    f"Message {message_id} from user {telegram_id_str} throttled - "
-                    f"user has pending messages awaiting reply"
-                )
+                # User has pending messages, throttle this one
+                # But still mark it in DB to prevent duplicate processing if retried
+                is_new = mark_if_new(telegram_id_str, message_id)
+                if is_new:
+                    # Mark immediately as "replied" so it doesn't interfere with throttling
+                    mark_reply_sent(telegram_id_str, message_id)
+                    logger.info(
+                        f"Message {message_id} from user {telegram_id_str} throttled - "
+                        f"user has pending messages awaiting reply"
+                    )
+                else:
+                    logger.info(f"Duplicate throttled message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "throttled": True}
             
             # Now check if this specific message is a duplicate
