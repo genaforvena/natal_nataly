@@ -10,7 +10,7 @@ This module implements a 15-second throttling window:
 import logging
 import threading
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def clear_user_throttle(telegram_id: str) -> None:
             logger.debug(f"Cleared throttle state for user {telegram_id}")
 
 
-def get_throttle_stats() -> Dict[str, any]:
+def get_throttle_stats() -> Dict[str, Any]:
     """
     Get statistics about message throttling.
     

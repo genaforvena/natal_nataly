@@ -17,6 +17,10 @@ pip install -r requirements.txt
 ```bash
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
+# Security: Webhook Secret Token (recommended for production)
+# Generate with: openssl rand -hex 32
+TELEGRAM_SECRET_TOKEN=your_secure_random_secret_token_here
+
 # LLM Configuration (choose one)
 LLM_PROVIDER=groq  # or "deepseek"
 
@@ -26,6 +30,8 @@ GROQ_API_KEY=your_groq_api_key_here
 # If using DeepSeek:
 # DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ```
+
+**Security Note**: The `TELEGRAM_SECRET_TOKEN` is optional but highly recommended for production. It prevents unauthorized webhook requests from spoofing Telegram's servers.
 
 3. Create ephemeris directory (required for pyswisseph):
 ```bash
@@ -45,11 +51,24 @@ The server will start on `http://localhost:8000`
 
 After deploying your server to a public URL, register the webhook with Telegram:
 
+### Without Secret Token (Development Only)
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://your-domain.com/webhook"}'
 ```
+
+### With Secret Token (Recommended for Production)
+```bash
+# Use the same token from your TELEGRAM_SECRET_TOKEN environment variable
+SECRET_TOKEN="your_secure_random_secret_token_here"
+
+curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\": \"https://your-domain.com/webhook\", \"secret_token\": \"$SECRET_TOKEN\"}"
+```
+
+The bot will automatically verify the `X-Telegram-Bot-Api-Secret-Token` header on incoming webhook requests when `TELEGRAM_SECRET_TOKEN` is configured.
 
 ## Testing Locally
 

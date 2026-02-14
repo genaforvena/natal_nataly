@@ -178,10 +178,13 @@ class TestMessageThrottling:
         # Send first message
         payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="First")
         client.post("/webhook", json=payload1)
+        assert mock_bot_handler.call_count == 1, "First message should be processed"
         
         # Send second message (throttled)
         payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="Second")
-        client.post("/webhook", json=payload2)
+        response2 = client.post("/webhook", json=payload2)
+        assert response2.json().get("throttled") is True, "Second message should be throttled"
+        assert mock_bot_handler.call_count == 1, "Handler should not be called for throttled message"
         
         # Mock time advancement and send third message
         with patch('src.message_throttler.datetime') as mock_datetime:
@@ -192,18 +195,18 @@ class TestMessageThrottling:
             payload3 = create_webhook_payload(user_id=user_id, message_id=3, text="Third")
             client.post("/webhook", json=payload3)
             
-            # Check that the bot handler was called with combined messages
-            # The implementation should combine "Second" and "Third" with separator
-            if mock_bot_handler.call_count > 1:
-                # Get the last call's argument
-                last_call = mock_bot_handler.call_args_list[-1]
-                call_data = last_call[0][0]  # First positional argument
-                message_text = call_data.get("message", {}).get("text", "")
-                
-                # Messages should be combined with separator
-                if "---" in message_text:
-                    assert "Second" in message_text
-                    assert "Third" in message_text
+            # The handler should be called again for the grouped messages
+            assert mock_bot_handler.call_count == 2, "Handler should be called for grouped messages"
+            
+            # Get the last call's argument to verify message grouping
+            last_call = mock_bot_handler.call_args_list[-1]
+            call_data = last_call[0][0]  # First positional argument
+            message_text = call_data.get("message", {}).get("text", "")
+            
+            # Messages should be combined with separator
+            assert "---" in message_text, "Combined messages should have separator"
+            assert "Second" in message_text, "Combined message should include 'Second'"
+            assert "Third" in message_text, "Combined message should include 'Third'"
 
 
 @pytest.mark.unit
