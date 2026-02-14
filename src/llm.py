@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from openai import OpenAI
 from src.prompt_loader import load_parser_prompt, load_response_prompt, load_personality
 
@@ -13,6 +15,9 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "deepseek")  # Default to groq
 # Configuration constants for conversation context
 MAX_CONVERSATION_CONTEXT_MESSAGES = 6  # Maximum number of previous messages to include in context
 MAX_MESSAGE_CONTENT_LENGTH = 200  # Maximum characters per message in conversation context
+
+# Thread pool executor for running blocking LLM calls in async context
+_executor = ThreadPoolExecutor(max_workers=10)
 
 if LLM_PROVIDER == "deepseek":
     logger.info(f"Initializing LLM client with provider: {LLM_PROVIDER}")
@@ -527,3 +532,192 @@ def extract_transit_date(text: str) -> dict:
         logger.exception(f"Error during transit date extraction: {e}")
         # Return null date to use current time
         return {"date": None, "time_specified": False}
+
+
+# ============================================================================
+# ASYNC VERSIONS OF LLM FUNCTIONS
+# These wrap the synchronous functions to run in a thread pool executor
+# for non-blocking async execution in async handlers
+# ============================================================================
+
+async def call_llm_async(
+    prompt_type: str,
+    variables: dict,
+    temperature: float = 0.7,
+    is_parser: bool = None,
+    conversation_history: list = None,
+    current_user_message: str = None,
+    user_profile: str = None
+) -> str:
+    """
+    Async version of call_llm that runs in a thread pool executor.
+    
+    See call_llm() for full documentation.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: call_llm(
+            prompt_type=prompt_type,
+            variables=variables,
+            temperature=temperature,
+            is_parser=is_parser,
+            conversation_history=conversation_history,
+            current_user_message=current_user_message,
+            user_profile=user_profile
+        )
+    )
+
+
+async def extract_birth_data_async(text: str, conversation_history: list = None) -> dict:
+    """
+    Async version of extract_birth_data that runs in a thread pool executor.
+    
+    Args:
+        text: Current user message
+        conversation_history: Optional list of previous messages to accumulate data from
+    
+    Returns:
+        dict with keys: dob, time, lat, lng, location, original_input, 
+                       normalized_input, missing_fields
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: extract_birth_data(text, conversation_history)
+    )
+
+
+async def generate_clarification_question_async(
+    missing_fields: list,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
+    """
+    Async version of generate_clarification_question that runs in a thread pool executor.
+    
+    Args:
+        missing_fields: List of missing field names
+        user_message: The user's previous message
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
+        
+    Returns:
+        String with clarification question
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: generate_clarification_question(
+            missing_fields, user_message, conversation_history, user_profile
+        )
+    )
+
+
+async def interpret_chart_async(
+    chart_json: dict,
+    question: str = None,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
+    """
+    Async version of interpret_chart that runs in a thread pool executor.
+    
+    Args:
+        chart_json: The natal chart data
+        question: Optional user question for conversational mode
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
+        
+    Returns:
+        String interpretation
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: interpret_chart(chart_json, question, conversation_history, user_profile)
+    )
+
+
+async def classify_intent_async(text: str) -> dict:
+    """
+    Async version of classify_intent that runs in a thread pool executor.
+    
+    Args:
+        text: User's message text
+        
+    Returns:
+        dict with keys: intent, confidence
+        Example: {"intent": "ask_about_chart", "confidence": 0.95}
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, lambda: classify_intent(text))
+
+
+async def generate_assistant_response_async(
+    context: dict,
+    user_message: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
+    """
+    Async version of generate_assistant_response that runs in a thread pool executor.
+    
+    Args:
+        context: Dict with natal_chart, profile_name, recent_questions, etc.
+        user_message: The user's current message
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
+        
+    Returns:
+        String response from assistant
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: generate_assistant_response(context, user_message, conversation_history, user_profile)
+    )
+
+
+async def interpret_transits_async(
+    natal_chart_json: dict,
+    transits_text: str,
+    user_question: str,
+    conversation_history: list = None,
+    user_profile: str = None
+) -> str:
+    """
+    Async version of interpret_transits that runs in a thread pool executor.
+    
+    Args:
+        natal_chart_json: User's natal chart data
+        transits_text: Formatted transit data (from format_transits_for_llm)
+        user_question: User's original question
+        conversation_history: List of previous conversation messages
+        user_profile: LLM-maintained user profile document
+        
+    Returns:
+        String interpretation of transits
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: interpret_transits(
+            natal_chart_json, transits_text, user_question, conversation_history, user_profile
+        )
+    )
+
+
+async def extract_transit_date_async(text: str) -> dict:
+    """
+    Async version of extract_transit_date that runs in a thread pool executor.
+    
+    Args:
+        text: User's message text
+        
+    Returns:
+        dict with keys: date (YYYY-MM-DD or null or relative like "tomorrow"), time_specified (bool)
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, lambda: extract_transit_date(text))

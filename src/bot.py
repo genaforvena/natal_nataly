@@ -12,6 +12,12 @@ from src.llm import (
     classify_intent,
     generate_assistant_response,
     interpret_transits,
+    extract_birth_data_async,
+    generate_clarification_question_async,
+    interpret_chart_async,
+    classify_intent_async,
+    generate_assistant_response_async,
+    interpret_transits_async,
     MODEL
 )
 from src.db import SessionLocal
@@ -44,7 +50,7 @@ from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIG
 from src.thread_manager import add_message_to_thread, get_conversation_thread, reset_thread, get_thread_summary
 from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
-from src.services.intent_router import detect_request_type
+from src.services.intent_router import detect_request_type, detect_request_type_async
 from src.prompt_loader import load_response_prompt
 
 # Configure logging
@@ -642,7 +648,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     try:
         # Use LLM to extract birth data from free-form text
         # Pass conversation history to accumulate data from previous messages
-        birth_data = extract_birth_data(text, conversation_history=conversation_history)
+        birth_data = await extract_birth_data_async(text, conversation_history=conversation_history)
         
         # Stage 2: Log parsed data from LLM
         log_pipeline_stage_2_parsed_data(session_id, birth_data)
@@ -657,7 +663,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
             
             # Generate clarification question with conversation context
             # and user profile
-            question = generate_clarification_question(
+            question = await generate_clarification_question_async(
                 missing, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -983,7 +989,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     try:
         # Extract data again from the clarification message
         # Pass conversation history to accumulate data from all previous messages
-        birth_data = extract_birth_data(text, conversation_history=conversation_history)
+        birth_data = await extract_birth_data_async(text, conversation_history=conversation_history)
         
         # Check what was previously missing
         previously_missing = user.missing_fields.split(",") if user.missing_fields else []
@@ -998,7 +1004,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
             update_user_state(session, user.telegram_id, STATE_AWAITING_CLARIFICATION, missing_fields=",".join(still_missing))
             
             # Ask again with conversation context and user profile
-            question = generate_clarification_question(
+            question = await generate_clarification_question_async(
                 still_missing, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -1115,7 +1121,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         prompt_name = "assistant_response"
         if user.assistant_mode:
             logger.info("Using assistant mode for response")
-            reading = generate_assistant_response(
+            reading = await generate_assistant_response_async(
                 context, text,
                 conversation_history=conversation_history,
                 user_profile=user_profile
@@ -1123,7 +1129,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         else:
             # Fallback to legacy interpret_chart
             logger.info("Using legacy chart interpretation")
-            reading = interpret_chart(chart, question=text, conversation_history=conversation_history, user_profile=user_profile)
+            reading = await interpret_chart_async(chart, question=text, conversation_history=conversation_history, user_profile=user_profile)
             prompt_name = "astrologer_chat"
         
         # Add user message and assistant response to conversation thread after generation
@@ -1356,7 +1362,7 @@ async def handle_meta_conversation(session, user: User, chat_id: int, text: str)
         context = build_agent_context(session, user, profile)
         
         # Use assistant to respond naturally
-        reading = generate_assistant_response(context, text)
+        reading = await generate_assistant_response_async(context, text)
         await send_telegram_message(chat_id, reading)
         
     except Exception as e:
@@ -1379,7 +1385,7 @@ async def handle_general_question(session, user: User, chat_id: int, text: str):
         context = build_agent_context(session, user, profile)
         
         # Use assistant to explain general astrology
-        reading = generate_assistant_response(context, text)
+        reading = await generate_assistant_response_async(context, text)
         await send_telegram_message(chat_id, reading)
         
     except Exception as e:
@@ -1438,7 +1444,7 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
         logger.info("Transits calculated successfully")
         
         # Get LLM interpretation
-        reading = interpret_transits(chart, transits_text, text)
+        reading = await interpret_transits_async(chart, transits_text, text)
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
@@ -1498,8 +1504,8 @@ async def route_message(session, user: User, chat_id: int, text: str):
     # For users with charts, use intent-based routing for conversational flow
     if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
-            # Use LLM-based intent detection
-            intent_type = detect_request_type(text)
+            # Use async LLM-based intent detection
+            intent_type = await detect_request_type_async(text)
             
             logger.info(f"Intent detected: {intent_type}")
             
