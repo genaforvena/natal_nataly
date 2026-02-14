@@ -221,10 +221,13 @@ def get_cache_stats() -> Dict[str, int]:
 def clear_cache() -> None:
     """
     Clear all entries from in-memory cache and database.
-    Useful for testing and debugging.
+    Useful for testing and debugging ONLY.
+    
+    In normal operation, database entries are kept indefinitely for audit trail.
+    This function provides a way to clear database entries when explicitly needed
+    for testing or debugging purposes.
     
     WARNING: This will allow previously processed messages to be processed again!
-    Note: This function still clears database entries for testing purposes only.
     """
     with _cache_lock:
         # Clear in-memory cache
