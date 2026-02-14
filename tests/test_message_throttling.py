@@ -112,6 +112,7 @@ class TestReplyBasedThrottling:
         
         # Mock bot handler to check the combined message
         combined_text = None
+
         def capture_combined_text(data):
             nonlocal combined_text
             combined_text = data.get("message", {}).get("text", "")

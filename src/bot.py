@@ -1635,6 +1635,7 @@ async def handle_telegram_update(update: dict):
             if text.startswith("/"):
                 is_command = True
                 # Create send_msg helper function for command handlers
+
                 async def send_msg(msg):
                     nonlocal message_sent_successfully
                     await send_telegram_message(chat_id, msg)
