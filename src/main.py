@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
 from src.message_cache import mark_if_new
+from src.message_throttler import should_process_message
 
 
 class HealthCheckFilter(logging.Filter):
@@ -64,12 +65,21 @@ async def health():
 async def telegram_webhook(request: Request):
     logger.info("Webhook endpoint called")
     try:
+        # Verify Telegram secret token if configured (security feature)
+        secret_token = os.getenv("TELEGRAM_SECRET_TOKEN")
+        if secret_token:
+            received_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+            if not received_token or received_token != secret_token:
+                logger.warning("Webhook request rejected: invalid or missing secret token")
+                return {"ok": False, "error": "Unauthorized"}
+        
         data = await request.json()
         # Extract message metadata safely
         message = data.get("message", {})
         message_id = message.get("message_id")
         chat_id = message.get("chat", {}).get("id", "unknown")
         telegram_id = message.get("from", {}).get("id")
+        message_text = message.get("text", "")
         
         logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}, telegram_id={telegram_id}")
         
@@ -82,6 +92,22 @@ async def telegram_webhook(request: Request):
             if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
+            
+            # Apply message throttling (15-second window)
+            should_process, messages_to_process = should_process_message(telegram_id_str, message_text)
+            
+            if not should_process:
+                # Message is being throttled - will be processed with next batch
+                logger.info(f"Message {message_id} from user {telegram_id_str} throttled")
+                return {"ok": True, "throttled": True}
+            
+            # If we have multiple messages grouped, combine them
+            if len(messages_to_process) > 1:
+                logger.info(f"Processing {len(messages_to_process)} grouped messages for user {telegram_id_str}")
+                # Combine messages with clear separation
+                combined_text = "\n\n---\n\n".join(messages_to_process)
+                # Update the message text in the data structure
+                data["message"]["text"] = combined_text
         
         result = await handle_telegram_update(data)
         logger.debug(f"Webhook processing result: {result}")
