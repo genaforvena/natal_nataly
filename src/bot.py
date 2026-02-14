@@ -52,7 +52,7 @@ from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
 from src.services.intent_router import detect_request_type, detect_request_type_async
 from src.prompt_loader import load_response_prompt
-from src.message_cache import mark_all_pending_as_replied
+from src.message_cache import mark_all_pending_as_replied, mark_message_as_replied
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1598,6 +1598,7 @@ async def handle_telegram_update(update: dict):
     telegram_id = None
     message_id = None
     processing_successful = False
+    is_command = False
     
     try:
         # Extract message data
@@ -1631,6 +1632,7 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
+                is_command = True
                 # Create send_msg helper function for command handlers
                 async def send_msg(msg):
                     await send_telegram_message(chat_id, msg)
@@ -1676,9 +1678,14 @@ async def handle_telegram_update(update: dict):
         # Don't mark as successful on exception
         return {"ok": True}
     finally:
-        # Mark all pending messages as replied after successful processing
-        # This includes the current message and any throttled messages that were combined
+        # Mark messages as replied after successful processing
         if processing_successful and telegram_id is not None:
-            marked_count = mark_all_pending_as_replied(telegram_id)
-            if marked_count > 0:
-                logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")
+            if is_command and message_id is not None:
+                # Commands only mark the current message (don't process pending messages)
+                mark_message_as_replied(telegram_id, message_id)
+                logger.info(f"Marked command message {message_id} as replied for user {telegram_id}")
+            else:
+                # Regular messages mark all pending (they process combined messages)
+                marked_count = mark_all_pending_as_replied(telegram_id)
+                if marked_count > 0:
+                    logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")

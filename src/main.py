@@ -87,46 +87,42 @@ async def telegram_webhook(request: Request):
         if message_id is not None and telegram_id is not None:
             telegram_id_str = str(telegram_id)
             
-            # First, check if user has pending messages awaiting reply (throttling check)
-            # We do this BEFORE marking as new to avoid race condition where the current
-            # message gets counted as "pending" immediately after being added to DB
-            if has_pending_reply(telegram_id_str):
-                # User has pending messages, throttle this one
-                # Store it in DB with text for later combining, but DON'T mark as replied
-                is_new = mark_if_new(telegram_id_str, message_id, message_text)
-                if is_new:
-                    logger.info(
-                        f"Message {message_id} from user {telegram_id_str} throttled - "
-                        f"user has pending messages awaiting reply. Message will be combined with pending messages."
-                    )
-                else:
-                    logger.info(f"Duplicate throttled message {message_id} from user {telegram_id_str}")
-                return {"ok": True, "throttled": True}
-            
-            # No pending messages - this will be processed
-            # Retrieve any pending messages that arrived while checking (race condition edge case)
-            pending_messages = get_pending_messages(telegram_id_str)
-            
-            # Now check if this specific message is a duplicate
+            # First, atomically mark this message in DB (prevents duplicates and establishes order)
             is_new = mark_if_new(telegram_id_str, message_id, message_text)
             
             if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
             
-            # If there are pending messages (edge case: arrived between checks), combine them
-            if pending_messages:
-                # Combine all pending messages with current message
+            # Now check if there are OTHER pending messages (excluding current one)
+            # Since we marked current message first, it won't cause race conditions
+            pending_messages = get_pending_messages(telegram_id_str)
+            
+            # Filter out the current message from pending list (it was just added)
+            other_pending = [msg for msg in pending_messages if msg.message_id != message_id]
+            
+            if other_pending:
+                # There are OTHER messages waiting for reply - throttle this one
+                logger.info(
+                    f"Message {message_id} from user {telegram_id_str} throttled - "
+                    f"user has {len(other_pending)} other pending message(s). Message will be combined later."
+                )
+                return {"ok": True, "throttled": True}
+            
+            # No other pending messages - this will be processed
+            # But also retrieve any messages that were marked during processing start
+            # This handles edge case where multiple messages arrive nearly simultaneously
+            pending_messages = get_pending_messages(telegram_id_str)
+            
+            if len(pending_messages) > 1:
+                # Multiple messages to process together (including current one)
                 all_texts = [msg.message_text for msg in pending_messages if msg.message_text]
-                # Only add current message text if it's not None/empty
-                if message_text:
-                    all_texts.append(message_text)
                 
-                # Combine messages with separator (filter ensures no None/empty values)
-                combined_text = "\n\n---\n\n".join(filter(None, all_texts))
+                # Combine messages with separator
+                combined_text = "\n\n---\n\n".join(all_texts)
                 
                 logger.info(
-                    f"Combining {len(pending_messages)} pending message(s) with current message "
+                    f"Combining {len(pending_messages)} pending message(s) "
                     f"for user {telegram_id_str}"
                 )
                 

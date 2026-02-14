@@ -123,12 +123,14 @@ To enable webhook security:
 
 The bot implements intelligent message throttling to improve user experience:
 
-- **15-Second Window**: Messages from the same user within 15 seconds are grouped
-- **Automatic Merging**: Grouped messages are combined and processed together
-- **Single Response**: The bot replies once for the entire message group
+- **Reply-Based Throttling**: Messages from the same user are automatically combined before processing
+- **Automatic Queuing**: When a user sends multiple messages before receiving a reply, only the first is processed
+- **Message Combining**: Subsequent messages are queued and combined with the first message  
+- **Single Response**: The bot sends ONE comprehensive reply addressing all queued messages together
 - **Per-User**: Throttling is applied independently for each user
+- **Efficient**: Reduces LLM API calls and prevents response flooding
 
-This prevents response flooding when users send multiple quick messages and provides more coherent responses.
+This prevents duplicate processing when users send multiple quick messages and provides more coherent responses.
 
 ## Deploy to Render (Free Hosting)
 

@@ -23,7 +23,7 @@ def upgrade() -> None:
     # Add reply_sent column (default False for existing rows)
     op.add_column(
         'processed_messages',
-        sa.Column('reply_sent', sa.Boolean(), nullable=False, server_default='0')
+        sa.Column('reply_sent', sa.Boolean(), nullable=False, server_default=sa.false())
     )
     
     # Add reply_sent_at column (nullable, as not all messages have replies yet)

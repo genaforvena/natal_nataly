@@ -257,46 +257,6 @@ def clear_cache() -> None:
             logger.error(f"Error clearing database cache: {e}")
 
 
-def mark_reply_sent(telegram_id: str, message_id: int) -> bool:
-    """
-    Mark that a reply has been sent for a specific message.
-    
-    Args:
-        telegram_id: Telegram user ID
-        message_id: Telegram message ID
-        
-    Returns:
-        True if successfully marked, False otherwise
-    """
-    session = SessionLocal()
-    try:
-        result = session.query(ProcessedMessage).filter_by(
-            telegram_id=telegram_id,
-            message_id=message_id
-        ).update({
-            'reply_sent': True,
-            'reply_sent_at': datetime.now(timezone.utc)
-        })
-        session.commit()
-        
-        if result > 0:
-            logger.debug(
-                f"Marked reply as sent for message {message_id} from user {telegram_id}"
-            )
-            return True
-        else:
-            logger.warning(
-                f"Could not mark reply as sent for message {message_id} from user {telegram_id} - message not found"
-            )
-            return False
-    except Exception as e:
-        logger.exception(f"Error marking reply as sent: {e}")
-        session.rollback()
-        return False
-    finally:
-        session.close()
-
-
 def has_pending_reply(telegram_id: str) -> bool:
     """
     Check if there are any messages from this user that haven't been replied to yet.
@@ -367,6 +327,47 @@ def get_pending_messages(telegram_id: str) -> list[PendingMessage]:
     except Exception as e:
         logger.exception(f"Error retrieving pending messages: {e}")
         return []
+    finally:
+        session.close()
+
+
+def mark_message_as_replied(telegram_id: str, message_id: int) -> bool:
+    """
+    Mark a specific message as replied (used for commands that don't process pending messages).
+    
+    Args:
+        telegram_id: Telegram user ID
+        message_id: Specific message ID to mark
+        
+    Returns:
+        True if successfully marked, False otherwise
+    """
+    session = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        result = session.query(ProcessedMessage).filter_by(
+            telegram_id=telegram_id,
+            message_id=message_id
+        ).update({
+            'reply_sent': True,
+            'reply_sent_at': now
+        })
+        session.commit()
+        
+        if result > 0:
+            logger.debug(
+                f"Marked message {message_id} as replied for user {telegram_id}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"Could not mark message {message_id} as replied - message not found"
+            )
+            return False
+    except Exception as e:
+        logger.exception(f"Error marking message as replied: {e}")
+        session.rollback()
+        return False
     finally:
         session.close()
 
