@@ -13,12 +13,20 @@ This prevents duplicate processing when:
 import logging
 import threading
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Tuple
+from typing import Dict, Tuple, NamedTuple
 from sqlalchemy.orm import Session
 from src.db import SessionLocal
 from src.models import ProcessedMessage
 
 logger = logging.getLogger(__name__)
+
+
+class PendingMessage(NamedTuple):
+    """Represents a pending message with its metadata."""
+    message_id: int
+    message_text: str
+    processed_at: datetime
+
 
 # In-memory cache: (telegram_id, message_id) -> timestamp
 # Provides fast lookups without database queries
@@ -323,7 +331,7 @@ def has_pending_reply(telegram_id: str) -> bool:
         session.close()
 
 
-def get_pending_messages(telegram_id: str) -> list:
+def get_pending_messages(telegram_id: str) -> list[PendingMessage]:
     """
     Get all pending messages (not replied yet) for a user with their text content.
     
@@ -331,7 +339,7 @@ def get_pending_messages(telegram_id: str) -> list:
         telegram_id: Telegram user ID
         
     Returns:
-        List of tuples (message_id, message_text, processed_at) ordered by processed_at
+        List of PendingMessage namedtuples ordered by processed_at
     """
     session = SessionLocal()
     try:
@@ -348,7 +356,14 @@ def get_pending_messages(telegram_id: str) -> list:
             f"Retrieved {len(messages)} pending message(s) for user {telegram_id}"
         )
         
-        return [(msg.message_id, msg.message_text, msg.processed_at) for msg in messages]
+        return [
+            PendingMessage(
+                message_id=msg.message_id,
+                message_text=msg.message_text,
+                processed_at=msg.processed_at
+            )
+            for msg in messages
+        ]
     except Exception as e:
         logger.exception(f"Error retrieving pending messages: {e}")
         return []

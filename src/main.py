@@ -117,10 +117,12 @@ async def telegram_webhook(request: Request):
             # If there are pending messages (edge case: arrived between checks), combine them
             if pending_messages:
                 # Combine all pending messages with current message
-                all_texts = [msg[1] for msg in pending_messages if msg[1]]  # Get message_text from tuples
-                all_texts.append(message_text)
+                all_texts = [msg.message_text for msg in pending_messages if msg.message_text]
+                # Only add current message text if it's not None/empty
+                if message_text:
+                    all_texts.append(message_text)
                 
-                # Combine messages with separator
+                # Combine messages with separator (filter ensures no None/empty values)
                 combined_text = "\n\n---\n\n".join(filter(None, all_texts))
                 
                 logger.info(
