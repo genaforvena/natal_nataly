@@ -50,7 +50,7 @@ def create_webhook_payload(user_id: int, message_id: int, text: str):
     }
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestMessageTextIntegration:
     """Integration tests for message_text storage and combining."""
     
