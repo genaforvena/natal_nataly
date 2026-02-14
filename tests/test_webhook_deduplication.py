@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 from src.message_cache import clear_cache
+from src.message_throttler import clear_all_throttles
 
 
 @pytest.fixture
@@ -19,10 +20,12 @@ def client():
 
 @pytest.fixture(autouse=True)
 def clean_cache_before_test():
-    """Clean the message cache before each test."""
+    """Clean the message cache and throttle state before each test."""
     clear_cache()
+    clear_all_throttles()
     yield
     clear_cache()
+    clear_all_throttles()
 
 
 @pytest.fixture
@@ -31,6 +34,17 @@ def mock_bot_handler():
     with patch('src.main.handle_telegram_update', new_callable=AsyncMock) as mock:
         # Return a successful response by default
         mock.return_value = {"ok": True}
+        yield mock
+
+
+@pytest.fixture
+def mock_throttle():
+    """Mock the message throttling to process messages immediately in tests."""
+    with patch('src.main.should_process_message') as mock:
+        # Always return (True, [message_text]) - process immediately with single message
+        def side_effect(telegram_id, message_text):
+            return (True, [message_text])
+        mock.side_effect = side_effect
         yield mock
 
 
@@ -44,7 +58,7 @@ class TestWebhookDeduplication:
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
     
-    def test_webhook_with_duplicate_message_skips_second(self, client, mock_bot_handler):
+    def test_webhook_with_duplicate_message_skips_second(self, client, mock_bot_handler, mock_throttle):
         """Test that duplicate messages are skipped."""
         # Create a mock webhook payload
         webhook_data = {
@@ -77,7 +91,7 @@ class TestWebhookDeduplication:
         # Bot handler should not be called again
         assert mock_bot_handler.call_count == 1
     
-    def test_webhook_different_messages_not_skipped(self, client, mock_bot_handler):
+    def test_webhook_different_messages_not_skipped(self, client, mock_bot_handler, mock_throttle):
         """Test that different messages are not skipped."""
         # First message
         webhook_data1 = {
@@ -123,7 +137,7 @@ class TestWebhookDeduplication:
         # Bot handler should be called twice
         assert mock_bot_handler.call_count == 2
     
-    def test_webhook_same_message_id_different_users(self, client, mock_bot_handler):
+    def test_webhook_same_message_id_different_users(self, client, mock_bot_handler, mock_throttle):
         """Test that same message ID from different users are not skipped."""
         # First user
         webhook_data1 = {
@@ -169,7 +183,7 @@ class TestWebhookDeduplication:
         # Bot handler should be called twice
         assert mock_bot_handler.call_count == 2
     
-    def test_webhook_missing_message_id(self, client, mock_bot_handler):
+    def test_webhook_missing_message_id(self, client, mock_bot_handler, mock_throttle):
         """Test that webhook handles missing message_id gracefully."""
         # Webhook data without message_id
         webhook_data = {
@@ -192,7 +206,7 @@ class TestWebhookDeduplication:
         assert result.get("error") is None
         assert mock_bot_handler.call_count == 1
     
-    def test_webhook_missing_user_id(self, client, mock_bot_handler):
+    def test_webhook_missing_user_id(self, client, mock_bot_handler, mock_throttle):
         """Test that webhook handles missing user ID gracefully."""
         # Webhook data without from.id
         webhook_data = {
@@ -213,7 +227,7 @@ class TestWebhookDeduplication:
         assert result.get("error") is None
         assert mock_bot_handler.call_count == 1
     
-    def test_webhook_bot_handler_error_returns_error(self, client, mock_bot_handler):
+    def test_webhook_bot_handler_error_returns_error(self, client, mock_bot_handler, mock_throttle):
         """Test that errors from bot handler are properly reported."""
         # Make bot handler raise an exception
         mock_bot_handler.side_effect = Exception("Bot processing failed")

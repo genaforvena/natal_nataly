@@ -82,12 +82,53 @@ Stateful personal astrology assistant bot for Telegram with multi-profile suppor
    curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
      -d "url=https://your-domain.com/webhook"
    ```
+   
+   **Recommended:** For production security, set a secret token:
+   ```bash
+   # Generate a secure random token
+   SECRET_TOKEN=$(openssl rand -hex 32)
+   
+   # Register webhook with secret token
+   curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
+     -H "Content-Type: application/json" \
+     -d "{\"url\": \"https://your-domain.com/webhook\", \"secret_token\": \"$SECRET_TOKEN\"}"
+   
+   # Add the token to your .env file
+   echo "TELEGRAM_SECRET_TOKEN=$SECRET_TOKEN" >> .env
+   ```
 
 5. **Test locally with ngrok** (optional):
    ```bash
    ngrok http 8000
    # Use the ngrok URL to register webhook
    ```
+
+## Security Features
+
+### Webhook Secret Token Verification
+
+The bot supports Telegram's webhook secret token verification to prevent spoofed webhook requests:
+
+- **Backward Compatible**: Works without the token for development
+- **Production Ready**: Enable by setting `TELEGRAM_SECRET_TOKEN` environment variable
+- **Automatic Verification**: Rejects unauthorized requests with invalid or missing tokens
+
+To enable webhook security:
+1. Generate a secure random token (32+ characters recommended)
+2. Set `TELEGRAM_SECRET_TOKEN` in your `.env` file
+3. Register the webhook with Telegram including the `secret_token` parameter
+4. All webhook requests will be verified against the configured token
+
+### Message Throttling
+
+The bot implements intelligent message throttling to improve user experience:
+
+- **15-Second Window**: Messages from the same user within 15 seconds are grouped
+- **Automatic Merging**: Grouped messages are combined and processed together
+- **Single Response**: The bot replies once for the entire message group
+- **Per-User**: Throttling is applied independently for each user
+
+This prevents response flooding when users send multiple quick messages and provides more coherent responses.
 
 ## Deploy to Render (Free Hosting)
 
@@ -126,6 +167,7 @@ natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL sup
    
    ```bash
    TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
+   TELEGRAM_SECRET_TOKEN=<generate_secure_random_token>
    LLM_PROVIDER=groq
    GROQ_API_KEY=<your_groq_api_key>
    DATABASE_URL=<copy_from_postgres_internal_database_url>
@@ -137,6 +179,7 @@ natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL sup
    **Important:** 
    - Copy `DATABASE_URL` from your PostgreSQL database's **Internal Database URL**
    - Replace `your-app-name` in `WEBHOOK_URL` with your actual Render service name
+   - **Security**: Generate a secure random token for `TELEGRAM_SECRET_TOKEN` (e.g., `openssl rand -hex 32`)
 
 6. **Deploy:**
    - Click **Create Web Service**
@@ -145,11 +188,14 @@ natal_nataly can be deployed to [Render](https://render.com) with PostgreSQL sup
 
 7. **Register Telegram Webhook:**
    
-   Once deployed, register your webhook with Telegram:
+   Once deployed, register your webhook with Telegram (with secret token for security):
    ```bash
+   # Generate secret token (use the same value from TELEGRAM_SECRET_TOKEN env var)
+   SECRET_TOKEN="your_secret_token_from_render_env"
+   
    curl -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url": "https://your-app-name.onrender.com/webhook"}'
+     -d "{\"url\": \"https://your-app-name.onrender.com/webhook\", \"secret_token\": \"$SECRET_TOKEN\"}"
    ```
 
 8. **Verify deployment:**
