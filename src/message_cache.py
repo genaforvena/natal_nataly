@@ -11,7 +11,6 @@ This prevents duplicate processing when:
 """
 
 import logging
-import random
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple
@@ -29,8 +28,8 @@ _processed_messages: Dict[Tuple[str, int], datetime] = {}
 _cache_lock = threading.RLock()
 
 # Cache configuration
-CACHE_EXPIRY_HOURS = 24  # How long to keep entries in cache
-DB_EXPIRY_DAYS = 7  # Keep database entries for 7 days to handle long Telegram retry windows
+CACHE_EXPIRY_HOURS = 24  # How long to keep entries in memory cache
+# Note: Database entries are kept indefinitely (no expiry/deletion)
 
 
 def mark_if_new(telegram_id: str, message_id: int) -> bool:
@@ -56,7 +55,6 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
     key = (telegram_id, message_id)
     now = datetime.now(timezone.utc)
     expiry_threshold = now - timedelta(hours=CACHE_EXPIRY_HOURS)
-    db_expiry_threshold = now - timedelta(days=DB_EXPIRY_DAYS)
     
     with _cache_lock:
         # Step 1: Check in-memory cache first (fast path)
@@ -94,35 +92,22 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
             ).first()
             
             if existing:
-                # Check if database entry is expired
+                # Entry exists - this is a duplicate
                 # Handle both timezone-aware and naive datetimes from database
                 existing_time = existing.processed_at
                 if existing_time.tzinfo is None:
                     # Database returned naive datetime, assume UTC
                     existing_time = existing_time.replace(tzinfo=timezone.utc)
                 
-                if existing_time < db_expiry_threshold:
-                    # Entry is expired, delete it and treat as new
-                    session.delete(existing)
-                    session.commit()
-                    logger.debug(
-                        "Expired database entry for message %s from user %s "
-                        "(processed at %s)",
-                        message_id,
-                        telegram_id,
-                        existing.processed_at,
-                    )
-                else:
-                    # Entry is valid - this is a duplicate
-                    logger.info(
-                        "Message %s from user %s was already processed at %s (database hit, likely post-restart)",
-                        message_id,
-                        telegram_id,
-                        existing_time,
-                    )
-                    # Update in-memory cache to speed up future checks
-                    _processed_messages[key] = existing_time
-                    return False
+                logger.info(
+                    "Message %s from user %s was already processed at %s (database hit, likely post-restart)",
+                    message_id,
+                    telegram_id,
+                    existing_time,
+                )
+                # Update in-memory cache to speed up future checks
+                _processed_messages[key] = existing_time
+                return False
             
             # Step 3: Message is new - mark it in both cache and database
             # Add to database
@@ -180,19 +165,19 @@ def mark_if_new(telegram_id: str, message_id: int) -> bool:
 
 def _cleanup_cache_and_db_locked(session: Session) -> None:
     """
-    Remove expired entries from both cache and database to prevent memory/storage leaks.
+    Remove expired entries from in-memory cache to prevent memory leaks.
+    Database entries are kept indefinitely for audit trail.
     Called automatically when marking new messages as processed.
     
     NOTE: This function assumes the caller already holds _cache_lock.
     
     Args:
-        session: Active database session to use for cleanup
+        session: Active database session (unused but kept for API compatibility)
     """
     now = datetime.now(timezone.utc)
     memory_expiry_threshold = now - timedelta(hours=CACHE_EXPIRY_HOURS)
-    db_expiry_threshold = now - timedelta(days=DB_EXPIRY_DAYS)
     
-    # Clean up in-memory cache
+    # Clean up in-memory cache only
     expired_keys = [
         key for key, timestamp in _processed_messages.items()
         if timestamp < memory_expiry_threshold
@@ -203,21 +188,6 @@ def _cleanup_cache_and_db_locked(session: Session) -> None:
     
     if expired_keys:
         logger.debug("Cleaned up %d expired in-memory cache entries", len(expired_keys))
-    
-    # Clean up database (only occasionally to avoid overhead)
-    # Use a simple heuristic: clean every 100th call
-    if random.randint(1, 100) == 1:
-        try:
-            deleted_count = session.query(ProcessedMessage).filter(
-                ProcessedMessage.processed_at < db_expiry_threshold
-            ).delete()
-            session.commit()
-            
-            if deleted_count > 0:
-                logger.info("Cleaned up %d expired database entries", deleted_count)
-        except Exception as e:
-            logger.warning(f"Error cleaning up database entries: {e}")
-            session.rollback()
 
 
 def get_cache_stats() -> Dict[str, int]:
@@ -230,8 +200,7 @@ def get_cache_stats() -> Dict[str, int]:
     with _cache_lock:
         stats = {
             "memory_entries": len(_processed_messages),
-            "cache_expiry_hours": CACHE_EXPIRY_HOURS,
-            "db_expiry_days": DB_EXPIRY_DAYS
+            "cache_expiry_hours": CACHE_EXPIRY_HOURS
         }
         
         # Get database count
@@ -251,10 +220,11 @@ def get_cache_stats() -> Dict[str, int]:
 
 def clear_cache() -> None:
     """
-    Clear all entries from the cache and database.
+    Clear all entries from in-memory cache and database.
     Useful for testing and debugging.
     
     WARNING: This will allow previously processed messages to be processed again!
+    Note: This function still clears database entries for testing purposes only.
     """
     with _cache_lock:
         # Clear in-memory cache
