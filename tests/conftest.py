@@ -49,4 +49,3 @@ def test_environment():
         "LLM_PROVIDER": os.environ.get("LLM_PROVIDER"),
         "GROQ_API_KEY": os.environ.get("GROQ_API_KEY"),
     }
-
