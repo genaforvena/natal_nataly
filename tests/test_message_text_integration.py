@@ -113,7 +113,9 @@ class TestMessageTextIntegration:
         assert combined_texts[-1] == "Fourth message"
     
     def test_combined_messages_use_correct_separator(self, client, mock_bot_handler):
-        """Test that combined messages use the '\n\n---\n\n' separator."""
+        r"""
+        Test that combined messages use the '\n\n---\n\n' separator.
+        """
         user_id = 77777
         
         # Track the combined text
