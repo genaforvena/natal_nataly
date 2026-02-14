@@ -34,6 +34,7 @@ def get_timezone_cached(lat_rounded: float, lng_rounded: float) -> Optional[str]
     """
     return _timezone_finder.timezone_at(lat=lat_rounded, lng=lng_rounded)
 
+
 # Zodiac signs for reference
 SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",

@@ -230,7 +230,11 @@ def get_or_create_user(session, telegram_id: str) -> User:
         raise
 
 
-def update_user_state(session, telegram_id: str, state: str, natal_chart_json: str = None, missing_fields: str = None, commit: bool = True):
+def update_user_state(
+    session, telegram_id: str, state: str,
+    natal_chart_json: str = None, missing_fields: str = None,
+    commit: bool = True
+):
     """Update user state and optional fields"""
     logger.debug(f"Updating user state: telegram_id={telegram_id}, new_state={state}")
     try:
@@ -659,7 +663,7 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
     # Commit if requested
     if commit:
         session.commit()
-        logger.info(f"Profile created and activated in batch transaction")
+        logger.info("Profile created and activated in batch transaction")
     
     return profile
 
@@ -1166,7 +1170,11 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         else:
             # Fallback to legacy interpret_chart
             logger.info("Using legacy chart interpretation")
-            reading = await interpret_chart_async(chart, question=text, conversation_history=conversation_history, user_profile=user_profile)
+            reading = await interpret_chart_async(
+                chart, question=text,
+                conversation_history=conversation_history,
+                user_profile=user_profile
+            )
             prompt_name = "astrologer_chat"
         
         # Add user message and assistant response to conversation thread after generation
