@@ -1,9 +1,11 @@
 import os
 import logging
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
-from src.db import init_db
+from src.db import init_db, SessionLocal
 from src.message_cache import mark_if_new, has_pending_reply, mark_all_pending_as_replied, get_pending_messages
+from src.models import ProcessedMessage
 
 
 class HealthCheckFilter(logging.Filter):
@@ -53,6 +55,45 @@ async def startup():
     # Initialize database (synchronous call)
     init_db()
     logger.info("Database initialized")
+    
+    # Clean up stale pending messages from before restart
+    # These messages are from before app restart and won't be processed
+    # Mark them as replied to prevent blocking new messages
+    try:
+        session = SessionLocal()
+        try:
+            stale_messages = session.query(ProcessedMessage).filter_by(
+                reply_sent=False
+            ).all()
+            
+            if stale_messages:
+                # Group by user to log per-user counts
+                user_counts = {}
+                for msg in stale_messages:
+                    user_counts[msg.telegram_id] = user_counts.get(msg.telegram_id, 0) + 1
+                
+                logger.warning(
+                    f"Found {len(stale_messages)} stale pending message(s) from before restart "
+                    f"for {len(user_counts)} user(s). Marking as replied to unblock processing."
+                )
+                
+                for user_id, count in user_counts.items():
+                    logger.info(f"  User {user_id}: {count} stale message(s)")
+                
+                # Mark all as replied using bulk update for efficiency
+                now = datetime.now(timezone.utc)
+                session.query(ProcessedMessage).filter_by(
+                    reply_sent=False
+                ).update({
+                    'reply_sent': True,
+                    'reply_sent_at': now
+                })
+                session.commit()
+                logger.info(f"Marked {len(stale_messages)} stale message(s) as replied")
+        finally:
+            session.close()
+    except Exception as e:
+        logger.exception(f"Error cleaning up stale messages: {e}")
     
     logger.info("=== Application startup complete ===")
 
