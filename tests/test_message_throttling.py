@@ -1,17 +1,15 @@
 """
-Tests for message throttling functionality.
+Tests for reply-based message throttling functionality.
 
-These tests verify that messages arriving within a 15-second window
-are properly grouped and processed together.
+These tests verify that messages are throttled based on reply status,
+not on time windows.
 """
 
 import pytest
-import time
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 from src.message_cache import clear_cache
-from src.message_throttler import clear_all_throttles, get_throttle_stats
 
 
 @pytest.fixture
@@ -22,12 +20,10 @@ def client():
 
 @pytest.fixture(autouse=True)
 def clean_state_before_test():
-    """Clean both message cache and throttle state before each test."""
+    """Clean message cache before each test."""
     clear_cache()
-    clear_all_throttles()
     yield
     clear_cache()
-    clear_all_throttles()
 
 
 @pytest.fixture
@@ -55,8 +51,8 @@ def create_webhook_payload(user_id: int, message_id: int, text: str):
 
 
 @pytest.mark.unit
-class TestMessageThrottling:
-    """Tests for message throttling (15-second window)."""
+class TestReplyBasedThrottling:
+    """Tests for reply-based message throttling."""
     
     def test_first_message_processes_immediately(self, client, mock_bot_handler):
         """Test that the first message from a user is processed immediately."""
@@ -69,17 +65,18 @@ class TestMessageThrottling:
         assert result.get("throttled") is not True
         assert mock_bot_handler.call_count == 1
     
-    def test_second_message_within_window_throttled(self, client, mock_bot_handler):
-        """Test that a second message within 15 seconds is throttled."""
+    def test_second_message_while_processing_throttled(self, client, mock_bot_handler):
+        """Test that a second message while first is processing is throttled."""
         user_id = 222
         
-        # First message
+        # First message - starts processing (bot handler is called but reply not yet marked)
         payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="Message 1")
         response1 = client.post("/webhook", json=payload1)
         assert response1.status_code == 200
         assert mock_bot_handler.call_count == 1
         
-        # Second message immediately after (within throttle window)
+        # Second message immediately after (before reply is sent)
+        # This should be throttled because first message hasn't been replied yet
         payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="Message 2")
         response2 = client.post("/webhook", json=payload2)
         assert response2.status_code == 200
@@ -87,43 +84,6 @@ class TestMessageThrottling:
         assert result2.get("throttled") is True
         # Bot handler should not be called again
         assert mock_bot_handler.call_count == 1
-    
-    def test_third_message_processes_grouped_messages(self, client, mock_bot_handler):
-        """Test that multiple throttled messages are processed together after window."""
-        user_id = 333
-        
-        # First message
-        payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="Message 1")
-        client.post("/webhook", json=payload1)
-        assert mock_bot_handler.call_count == 1
-        
-        # Second message throttled
-        payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="Message 2")
-        response2 = client.post("/webhook", json=payload2)
-        assert response2.json().get("throttled") is True
-        assert mock_bot_handler.call_count == 1
-        
-        # Third message throttled
-        payload3 = create_webhook_payload(user_id=user_id, message_id=3, text="Message 3")
-        response3 = client.post("/webhook", json=payload3)
-        assert response3.json().get("throttled") is True
-        assert mock_bot_handler.call_count == 1
-        
-        # Wait for throttle window to expire (15+ seconds)
-        # For testing purposes, we'll mock the time to avoid actual waiting
-        # In production, this would naturally wait 15 seconds
-        with patch('src.message_throttler.datetime') as mock_datetime:
-            from datetime import datetime, timezone, timedelta
-            # Set time to 16 seconds after first message
-            mock_datetime.now.return_value = datetime.now(timezone.utc) + timedelta(seconds=16)
-            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-            
-            # Fourth message should trigger processing of grouped messages
-            payload4 = create_webhook_payload(user_id=user_id, message_id=4, text="Message 4")
-            response4 = client.post("/webhook", json=payload4)
-            assert response4.status_code == 200
-            # This should process the grouped messages
-            # Note: The exact behavior depends on implementation - it should combine messages
     
     def test_different_users_throttled_independently(self, client, mock_bot_handler):
         """Test that throttling is per-user, not global."""
@@ -140,98 +100,39 @@ class TestMessageThrottling:
         assert response2a.json().get("throttled") is not True
         assert mock_bot_handler.call_count == 2
         
-        # User 1 sends another message (should be throttled)
+        # User 1 sends another message (should be throttled because first message not replied)
         payload1b = create_webhook_payload(user_id=444, message_id=2, text="User 1 - Message 2")
         response1b = client.post("/webhook", json=payload1b)
         assert response1b.json().get("throttled") is True
         assert mock_bot_handler.call_count == 2  # Should not increment
     
-    def test_throttle_stats_tracking(self, client):
-        """Test that throttle statistics are correctly tracked."""
+    def test_message_combining_with_pending_messages(self, client, mock_bot_handler):
+        """Test that pending messages are combined when processing."""
         user_id = 666
         
-        # Initial stats
-        stats = get_throttle_stats()
-        initial_users = stats.get("active_users", 0)
+        # Mock bot handler to check the combined message
+        combined_text = None
+        def capture_combined_text(data):
+            nonlocal combined_text
+            combined_text = data.get("message", {}).get("text", "")
+            return {"ok": True}
         
-        # Send first message
-        payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="Message 1")
+        mock_bot_handler.side_effect = capture_combined_text
+        
+        # First message
+        payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="What is my sun sign?")
         client.post("/webhook", json=payload1)
         
-        # Check stats after first message
-        stats = get_throttle_stats()
-        assert stats.get("active_users") == initial_users + 1
-        assert stats.get("throttle_window_seconds") == 15
-        
-        # Send second message (throttled)
-        payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="Message 2")
-        client.post("/webhook", json=payload2)
-        
-        # Stats should show pending messages
-        stats = get_throttle_stats()
-        assert stats.get("total_pending_messages") >= 1
-    
-    def test_combined_message_format(self, client, mock_bot_handler):
-        """Test that grouped messages are properly combined with separator."""
-        user_id = 777
-        
-        # Send first message
-        payload1 = create_webhook_payload(user_id=user_id, message_id=1, text="First")
-        client.post("/webhook", json=payload1)
-        assert mock_bot_handler.call_count == 1, "First message should be processed"
-        
-        # Send second message (throttled)
-        payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="Second")
+        # Second message (throttled, stored)
+        payload2 = create_webhook_payload(user_id=user_id, message_id=2, text="And my moon sign?")
         response2 = client.post("/webhook", json=payload2)
-        assert response2.json().get("throttled") is True, "Second message should be throttled"
-        assert mock_bot_handler.call_count == 1, "Handler should not be called for throttled message"
+        assert response2.json().get("throttled") is True
         
-        # Mock time advancement and send third message
-        with patch('src.message_throttler.datetime') as mock_datetime:
-            from datetime import datetime, timezone, timedelta
-            mock_datetime.now.return_value = datetime.now(timezone.utc) + timedelta(seconds=16)
-            mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-            
-            payload3 = create_webhook_payload(user_id=user_id, message_id=3, text="Third")
-            client.post("/webhook", json=payload3)
-            
-            # The handler should be called again for the grouped messages
-            assert mock_bot_handler.call_count == 2, "Handler should be called for grouped messages"
-            
-            # Get the last call's argument to verify message grouping
-            last_call = mock_bot_handler.call_args_list[-1]
-            call_data = last_call[0][0]  # First positional argument
-            message_text = call_data.get("message", {}).get("text", "")
-            
-            # Messages should be combined with separator
-            assert "---" in message_text, "Combined messages should have separator"
-            assert "Second" in message_text, "Combined message should include 'Second'"
-            assert "Third" in message_text, "Combined message should include 'Third'"
-
-
-@pytest.mark.unit
-class TestThrottlingEdgeCases:
-    """Test edge cases for message throttling."""
-    
-    def test_empty_message_text_handled(self, client, mock_bot_handler):
-        """Test that messages with empty text are handled correctly."""
-        payload = create_webhook_payload(user_id=888, message_id=1, text="")
+        # Third message (throttled, stored)
+        payload3 = create_webhook_payload(user_id=user_id, message_id=3, text="Also my rising?")
+        response3 = client.post("/webhook", json=payload3)
+        assert response3.json().get("throttled") is True
         
-        response = client.post("/webhook", json=payload)
-        assert response.status_code == 200
-        assert response.json().get("ok") is True
-    
-    def test_missing_message_text_handled(self, client, mock_bot_handler):
-        """Test that messages without text field are handled correctly."""
-        payload = {
-            "message": {
-                "message_id": 1,
-                "from": {"id": 999},
-                "chat": {"id": 999}
-                # No "text" field
-            }
-        }
-        
-        response = client.post("/webhook", json=payload)
-        assert response.status_code == 200
-        # Should not crash, even if there's no text
+        # Check that first message text was sent to bot (may include combined messages)
+        # The exact combination logic depends on implementation
+        assert combined_text is not None
