@@ -18,7 +18,7 @@ _timezone_finder = TimezoneFinder()
 
 
 @lru_cache(maxsize=1000)
-def get_timezone_cached(lat: float, lng: float) -> Optional[str]:
+def get_timezone_cached(lat_rounded: float, lng_rounded: float) -> Optional[str]:
     """
     Get timezone for coordinates with caching.
     
@@ -26,16 +26,12 @@ def get_timezone_cached(lat: float, lng: float) -> Optional[str]:
     Cache size of 1000 should be sufficient for typical usage patterns.
     
     Args:
-        lat: Latitude
-        lng: Longitude
+        lat_rounded: Latitude (should be pre-rounded to 2 decimal places)
+        lng_rounded: Longitude (should be pre-rounded to 2 decimal places)
         
     Returns:
         Timezone string or None if not found
     """
-    # Round coordinates to 2 decimal places for better cache hits
-    # (precision of ~1.1km which is fine for timezone lookups)
-    lat_rounded = round(lat, 2)
-    lng_rounded = round(lng, 2)
     return _timezone_finder.timezone_at(lat=lat_rounded, lng=lng_rounded)
 
 # Zodiac signs for reference
@@ -143,7 +139,11 @@ def build_natal_chart_text_and_json(
     try:
         # Determine timezone if not provided (with caching)
         if tz_str is None:
-            tz_str = get_timezone_cached(lat, lng)
+            # Round coordinates to 2 decimal places for better cache hits
+            # (precision of ~1.1km which is fine for timezone lookups)
+            lat_rounded = round(lat, 2)
+            lng_rounded = round(lng, 2)
+            tz_str = get_timezone_cached(lat_rounded, lng_rounded)
             if tz_str is None:
                 tz_str = "UTC"  # Fallback to UTC if timezone can't be determined
                 logger.warning(f"Could not determine timezone for {lat}, {lng}, using UTC")

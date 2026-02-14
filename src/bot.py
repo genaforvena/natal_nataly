@@ -615,7 +615,7 @@ def build_agent_context(session, user: User, profile: AstroProfile = None) -> di
         raise
 
 
-def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict) -> AstroProfile:
+def create_and_activate_profile(session, user: User, birth_data: dict, chart: dict, commit: bool = True) -> AstroProfile:
     """
     Helper function to create a new profile, set it as active, and update user state.
     All operations are batched and committed together for better performance.
@@ -625,6 +625,7 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
         user: User object
         birth_data: Birth data dict
         chart: Generated natal chart dict
+        commit: Whether to commit the transaction (default True)
         
     Returns:
         Created AstroProfile
@@ -645,6 +646,9 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
         commit=False
     )
     
+    # Flush to get profile.id
+    session.flush()
+    
     # Set as active profile (no commit)
     set_active_profile(session, user, profile.id, commit=False)
     
@@ -652,9 +656,10 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
     chart_json = json.dumps(chart)
     update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, commit=False)
     
-    # Single commit for all operations
-    session.commit()
-    logger.info(f"Profile created and activated in batch transaction")
+    # Commit if requested
+    if commit:
+        session.commit()
+        logger.info(f"Profile created and activated in batch transaction")
     
     return profile
 
@@ -839,34 +844,10 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                 is_active=True
             )
             session.add(user_chart)
+            session.flush()  # Flush to persist user_chart
             
-            # Create profile and set as active (batched operations, no commit yet since we pass commit=False)
-            # Note: We need to flush first to get profile.id for set_active_profile
-            session.flush()
-            
-            # Save birth data (no commit)
-            birth_record = save_birth_data(session, user.telegram_id, birth_data, commit=False)
-            
-            # Create new AstroProfile (no commit)
-            profile = create_profile(
-                session, 
-                user.telegram_id, 
-                birth_data, 
-                chart,
-                profile_name=None,
-                profile_type="self",
-                commit=False
-            )
-            
-            # Flush to get profile.id
-            session.flush()
-            
-            # Set as active profile (no commit)
-            set_active_profile(session, user, profile.id, commit=False)
-            
-            # Store natal chart in user for legacy compatibility (no commit)
-            chart_json = json.dumps(chart)
-            update_user_state(session, user.telegram_id, STATE_HAS_CHART, natal_chart_json=chart_json, commit=False)
+            # Create profile and set as active (no commit yet)
+            profile = create_and_activate_profile(session, user, birth_data, chart, commit=False)
             
             # Clear pending data
             user.pending_birth_data = None
