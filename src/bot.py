@@ -52,6 +52,7 @@ from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
 from src.services.intent_router import detect_request_type, detect_request_type_async
 from src.prompt_loader import load_response_prompt
+from src.message_cache import mark_all_pending_as_replied, mark_message_as_replied
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1594,6 +1595,12 @@ async def handle_telegram_update(update: dict):
     update_type = "message" if "message" in update else "other"
     logger.debug(f"Update type: {update_type}")
     
+    telegram_id = None
+    message_id = None
+    processing_successful = False
+    is_command = False
+    message_sent_successfully = False
+    
     try:
         # Extract message data
         if "message" not in update:
@@ -1613,9 +1620,10 @@ async def handle_telegram_update(update: dict):
         
         chat_id = message["chat"]["id"]
         telegram_id = str(message["from"]["id"])
+        message_id = message.get("message_id")
         text = message.get("text", "")
         
-        logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}")
+        logger.info(f"Processing message from chat_id={chat_id}, telegram_id={telegram_id}, message_id={message_id}")
         logger.debug(f"Message length: {len(text)} characters")
         
         # Get or create user
@@ -1625,36 +1633,50 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
+                is_command = True
                 # Create send_msg helper function for command handlers
+
                 async def send_msg(msg):
+                    nonlocal message_sent_successfully
                     await send_telegram_message(chat_id, msg)
+                    message_sent_successfully = True
                 
                 # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
+                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Check for user transparency commands
                 if await handle_user_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
+                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
+                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
                 
                 # Handle /reset_thread command
                 if text.startswith("/reset_thread"):
                     await handle_reset_thread_command(session, user, chat_id)
+                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
             
-            # Route message based on state
+            # Route message based on state - this should send a message back
             await route_message(session, user, chat_id, text)
+            # Assume message was sent if route_message completes without exception
+            # TODO: For more robust tracking, route_message should return success status
+            message_sent_successfully = True
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
+            processing_successful = True
         finally:
             session.close()
         
@@ -1662,4 +1684,23 @@ async def handle_telegram_update(update: dict):
         
     except Exception as e:
         logger.exception(f"Critical error handling update: {e}")
+        # Don't mark as successful on exception
+        # Messages will remain pending and can be retried
         return {"ok": True}
+    finally:
+        # Mark messages as replied ONLY if we successfully sent a message
+        if processing_successful and message_sent_successfully and telegram_id is not None:
+            if is_command and message_id is not None:
+                # Commands only mark the current message (don't process pending messages)
+                mark_message_as_replied(telegram_id, message_id)
+                logger.info(f"Marked command message {message_id} as replied for user {telegram_id}")
+            else:
+                # Regular messages mark all pending (they process combined messages)
+                marked_count = mark_all_pending_as_replied(telegram_id)
+                if marked_count > 0:
+                    logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")
+        elif processing_successful and not message_sent_successfully:
+            logger.warning(
+                f"Processing completed but no message sent to user {telegram_id}. "
+                f"Messages remain pending and will be retried."
+            )

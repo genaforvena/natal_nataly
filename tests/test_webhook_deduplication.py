@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from src.main import app
 from src.message_cache import clear_cache
-from src.message_throttler import clear_all_throttles
 
 
 @pytest.fixture
@@ -20,12 +19,10 @@ def client():
 
 @pytest.fixture(autouse=True)
 def clean_cache_before_test():
-    """Clean the message cache and throttle state before each test."""
+    """Clean the message cache before each test."""
     clear_cache()
-    clear_all_throttles()
     yield
     clear_cache()
-    clear_all_throttles()
 
 
 @pytest.fixture
@@ -40,12 +37,12 @@ def mock_bot_handler():
 @pytest.fixture
 def mock_throttle():
     """Mock the message throttling to process messages immediately in tests."""
-    with patch('src.main.should_process_message') as mock:
-        # Always return (True, [message_text]) - process immediately with single message
-        def side_effect(telegram_id, message_text):
-            return (True, [message_text])
-        mock.side_effect = side_effect
-        yield mock
+    with patch('src.main.has_pending_reply') as mock_has_pending, \
+         patch('src.main.get_pending_messages') as mock_get_pending:
+        # No pending messages by default - allow processing
+        mock_has_pending.return_value = False
+        mock_get_pending.return_value = []
+        yield (mock_has_pending, mock_get_pending)
 
 
 @pytest.mark.integration

@@ -3,8 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db
-from src.message_cache import mark_if_new
-from src.message_throttler import should_process_message
+from src.message_cache import mark_if_new, has_pending_reply, mark_all_pending_as_replied, get_pending_messages
 
 
 class HealthCheckFilter(logging.Filter):
@@ -87,26 +86,47 @@ async def telegram_webhook(request: Request):
         # Only apply deduplication if we have valid IDs (not None)
         if message_id is not None and telegram_id is not None:
             telegram_id_str = str(telegram_id)
-            is_new = mark_if_new(telegram_id_str, message_id)
+            
+            # First, atomically mark this message in DB (prevents duplicates and establishes order)
+            is_new = mark_if_new(telegram_id_str, message_id, message_text)
             
             if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
             
-            # Apply message throttling (15-second window)
-            should_process, messages_to_process = should_process_message(telegram_id_str, message_text)
+            # Now check if there are OTHER pending messages (excluding current one)
+            # Since we marked current message first, it won't cause race conditions
+            pending_messages = get_pending_messages(telegram_id_str)
             
-            if not should_process:
-                # Message is being throttled - will be processed with next batch
-                logger.info(f"Message {message_id} from user {telegram_id_str} throttled")
+            # Filter out the current message from pending list (it was just added)
+            other_pending = [msg for msg in pending_messages if msg.message_id != message_id]
+            
+            if other_pending:
+                # There are OTHER messages waiting for reply - throttle this one
+                logger.info(
+                    f"Message {message_id} from user {telegram_id_str} throttled - "
+                    f"user has {len(other_pending)} other pending message(s). Message will be combined later."
+                )
                 return {"ok": True, "throttled": True}
             
-            # If we have multiple messages grouped, combine them
-            if len(messages_to_process) > 1:
-                logger.info(f"Processing {len(messages_to_process)} grouped messages for user {telegram_id_str}")
-                # Combine messages with clear separation
-                combined_text = "\n\n---\n\n".join(messages_to_process)
-                # Update the message text in the data structure
+            # No other pending messages - this will be processed
+            # But also retrieve any messages that were marked during processing start
+            # This handles edge case where multiple messages arrive nearly simultaneously
+            pending_messages = get_pending_messages(telegram_id_str)
+            
+            if len(pending_messages) > 1:
+                # Multiple messages to process together (including current one)
+                all_texts = [msg.message_text for msg in pending_messages if msg.message_text]
+                
+                # Combine messages with separator
+                combined_text = "\n\n---\n\n".join(all_texts)
+                
+                logger.info(
+                    f"Combining {len(pending_messages)} pending message(s) "
+                    f"for user {telegram_id_str}"
+                )
+                
+                # Update the message text in the data structure to process combined message
                 data["message"]["text"] = combined_text
         
         result = await handle_telegram_update(data)
