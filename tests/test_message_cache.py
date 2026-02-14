@@ -11,6 +11,7 @@ from src.message_cache import (
     mark_if_new,
     get_cache_stats,
     clear_cache,
+    get_pending_messages,
     CACHE_EXPIRY_HOURS
 )
 # Import _processed_messages only for testing expiry behavior
@@ -225,3 +226,85 @@ class TestMessageCache:
         # Verify message is back in memory cache after database hit
         with _cache_lock:
             assert (telegram_id, message_id) in _processed_messages
+    
+    def test_mark_if_new_stores_message_text(self, clean_cache):
+        """Test that message text is stored when marking a message as new."""
+        telegram_id = "user123"
+        message_id = 1
+        message_text = "Hello, this is a test message"
+        
+        # Mark message with text
+        result = mark_if_new(telegram_id, message_id, message_text)
+        assert result is True  # Message was new
+        
+        # Retrieve pending messages and verify text is stored
+        pending = get_pending_messages(telegram_id)
+        assert len(pending) == 1
+        assert pending[0].message_id == message_id
+        assert pending[0].message_text == message_text
+    
+    def test_mark_if_new_without_message_text(self, clean_cache):
+        """Test that marking a message without text works (backward compatibility)."""
+        telegram_id = "user456"
+        message_id = 2
+        
+        # Mark message without text (None)
+        result = mark_if_new(telegram_id, message_id)
+        assert result is True  # Message was new
+        
+        # Retrieve pending messages - text should be None
+        pending = get_pending_messages(telegram_id)
+        assert len(pending) == 1
+        assert pending[0].message_id == message_id
+        assert pending[0].message_text is None
+    
+    def test_get_pending_messages_returns_all_text(self, clean_cache):
+        """Test that get_pending_messages returns all message texts in order."""
+        telegram_id = "user789"
+        
+        # Add multiple messages with text
+        messages = [
+            (1, "First message"),
+            (2, "Second message"),
+            (3, "Third message"),
+        ]
+        
+        for msg_id, msg_text in messages:
+            mark_if_new(telegram_id, msg_id, msg_text)
+        
+        # Retrieve all pending messages
+        pending = get_pending_messages(telegram_id)
+        assert len(pending) == 3
+        
+        # Verify order and content
+        for i, (expected_id, expected_text) in enumerate(messages):
+            assert pending[i].message_id == expected_id
+            assert pending[i].message_text == expected_text
+    
+    def test_message_text_with_special_characters(self, clean_cache):
+        """Test that message text with special characters is stored correctly."""
+        telegram_id = "user_special"
+        message_id = 1
+        message_text = "Hello! 👋\nThis is a test\nWith special chars: @#$%^&*()"
+        
+        # Mark message with special text
+        mark_if_new(telegram_id, message_id, message_text)
+        
+        # Retrieve and verify
+        pending = get_pending_messages(telegram_id)
+        assert len(pending) == 1
+        assert pending[0].message_text == message_text
+    
+    def test_empty_message_text(self, clean_cache):
+        """Test that empty string message text is handled correctly."""
+        telegram_id = "user_empty"
+        message_id = 1
+        message_text = ""
+        
+        # Mark message with empty text
+        mark_if_new(telegram_id, message_id, message_text)
+        
+        # Retrieve and verify
+        pending = get_pending_messages(telegram_id)
+        assert len(pending) == 1
+        assert pending[0].message_text == ""
