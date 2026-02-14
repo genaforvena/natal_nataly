@@ -95,7 +95,9 @@ async def telegram_webhook(request: Request):
                 # But still mark it in DB to prevent duplicate processing if retried
                 is_new = mark_if_new(telegram_id_str, message_id)
                 if is_new:
-                    # Mark immediately as "replied" so it doesn't interfere with throttling
+                    # Mark as "replied" to prevent this throttled message from blocking future messages.
+                    # Note: This is semantically "message is complete/resolved" rather than "reply was sent"
+                    # since throttled messages intentionally receive no reply.
                     mark_reply_sent(telegram_id_str, message_id)
                     logger.info(
                         f"Message {message_id} from user {telegram_id_str} throttled - "

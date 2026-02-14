@@ -1546,6 +1546,7 @@ async def handle_telegram_update(update: dict):
     
     telegram_id = None
     message_id = None
+    processing_successful = False
     
     try:
         # Extract message data
@@ -1586,29 +1587,34 @@ async def handle_telegram_update(update: dict):
                 # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
                 
                 # Check for user transparency commands
                 if await handle_user_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
                 
                 # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
                 
                 # Handle /reset_thread command
                 if text.startswith("/reset_thread"):
                     await handle_reset_thread_command(session, user, chat_id)
                     logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
                     return {"ok": True}
             
             # Route message based on state
             await route_message(session, user, chat_id, text)
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
+            processing_successful = True
         finally:
             session.close()
         
@@ -1616,8 +1622,9 @@ async def handle_telegram_update(update: dict):
         
     except Exception as e:
         logger.exception(f"Critical error handling update: {e}")
+        # Don't mark as successful on exception
         return {"ok": True}
     finally:
-        # Mark reply as sent after successful processing (in finally block to ensure it runs)
-        if telegram_id is not None and message_id is not None:
+        # Mark reply as sent only after successful processing
+        if processing_successful and telegram_id is not None and message_id is not None:
             mark_reply_sent(telegram_id, message_id)
