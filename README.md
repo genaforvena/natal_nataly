@@ -360,14 +360,21 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 
 ## Documentation
 
-- See [docs/DOCKER_TESTING.md](docs/DOCKER_TESTING.md) for Docker deployment testing guide
+### For Product Analysts & Architects
+- **[docs/PRODUCT_ANALYST_DIAGRAMS.md](docs/PRODUCT_ANALYST_DIAGRAMS.md)** - Comprehensive flow diagrams and visualizations
+- **[docs/QUICK_FLOW_REFERENCE.md](docs/QUICK_FLOW_REFERENCE.md)** - Quick reference for system flows and metrics
+
+### For Developers
+- See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for project organization
+- See [docs/guides/STATEFUL_BOT_GUIDE.md](docs/guides/STATEFUL_BOT_GUIDE.md) for implementation details
+- See [docs/guides/DEBUG_MODE.md](docs/guides/DEBUG_MODE.md) for debug mode and developer commands
 - See [docs/guides/TESTING.md](docs/guides/TESTING.md) for CI/CD pipeline and testing guide
+
+### For Deployment
+- See [docs/DOCKER_TESTING.md](docs/DOCKER_TESTING.md) for Docker deployment testing guide
 - See [docs/deployment/DOCKER.md](docs/deployment/DOCKER.md) for comprehensive Docker deployment guide
 - See [docs/SETUP.md](docs/SETUP.md) for detailed manual setup instructions
 - See [docs/TEST_PAYLOADS.md](docs/TEST_PAYLOADS.md) for testing examples
-- See [docs/guides/STATEFUL_BOT_GUIDE.md](docs/guides/STATEFUL_BOT_GUIDE.md) for implementation details
-- See [docs/guides/DEBUG_MODE.md](docs/guides/DEBUG_MODE.md) for debug mode and developer commands
-- See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for project organization
 
 ## Debug Mode (Developer Tools)
 
