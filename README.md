@@ -360,9 +360,10 @@ This prevents errors from incorrect timezone detection or coordinate rounding.
 
 ## Documentation
 
-### For Product Analysts & Architects
-- **[docs/PRODUCT_ANALYST_DIAGRAMS.md](docs/PRODUCT_ANALYST_DIAGRAMS.md)** - Comprehensive flow diagrams and visualizations
-- **[docs/QUICK_FLOW_REFERENCE.md](docs/QUICK_FLOW_REFERENCE.md)** - Quick reference for system flows and metrics
+### 📊 Flow Visualizations & Diagrams
+- **[docs/VISUALIZATIONS_INDEX.md](docs/VISUALIZATIONS_INDEX.md)** - START HERE: Find the right diagram for your needs
+- **[docs/PRODUCT_ANALYST_DIAGRAMS.md](docs/PRODUCT_ANALYST_DIAGRAMS.md)** - Comprehensive flow diagrams (18 Mermaid diagrams)
+- **[docs/QUICK_FLOW_REFERENCE.md](docs/QUICK_FLOW_REFERENCE.md)** - Quick reference and simplified views
 
 ### For Developers
 - See [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for project organization
