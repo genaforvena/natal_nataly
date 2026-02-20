@@ -3,7 +3,10 @@ from datetime import datetime, timezone
 from src.db import Base
 
 # User state constants
-STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"
+STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"  # Legacy: free-form LLM-based collection
+STATE_AWAITING_DOB = "awaiting_dob"                # Step 1: date of birth (no LLM)
+STATE_AWAITING_BIRTH_TIME = "awaiting_birth_time"  # Step 2: time of birth (no LLM)
+STATE_AWAITING_BIRTH_PLACE = "awaiting_birth_place"  # Step 3: place of birth (geocoding)
 STATE_AWAITING_CLARIFICATION = "awaiting_clarification"
 STATE_AWAITING_CONFIRMATION = "awaiting_confirmation"
 STATE_AWAITING_EDIT_CONFIRMATION = "awaiting_edit_confirmation"
