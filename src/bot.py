@@ -734,11 +734,28 @@ async def handle_awaiting_birth_time(session, user: User, chat_id: int, text: st
         )
         return
 
-    # Update partial data
+    # Update partial data – recover from missing/corrupted pending data
     try:
         pending = json.loads(user.pending_birth_data or "{}")
     except (json.JSONDecodeError, TypeError):
         pending = {}
+
+    if not pending.get("dob"):
+        # DOB was lost; reset to step 1
+        logger.warning(f"[STEP-FLOW] DOB missing in pending data for {user.telegram_id}, resetting to DOB step")
+        user.pending_birth_data = None
+        user.state = STATE_AWAITING_DOB
+        session.commit()
+        await send_telegram_message(
+            chat_id,
+            "⚠️ Данные потерялись. Давай начнём заново.\n\n"
+            "📅 Укажи дату рождения:\n"
+            "• 15.05.1990\n"
+            "• 1990-05-15\n"
+            "• 15 мая 1990"
+        )
+        return
+
     pending["time"] = birth_time
     user.pending_birth_data = json.dumps(pending)
     user.state = STATE_AWAITING_BIRTH_PLACE
@@ -776,11 +793,42 @@ async def handle_awaiting_birth_place(session, user: User, chat_id: int, text: s
         )
         return
 
-    # Merge into pending data
+    # Merge into pending data – validate that earlier steps completed successfully
     try:
         pending = json.loads(user.pending_birth_data or "{}")
     except (json.JSONDecodeError, TypeError):
         pending = {}
+
+    missing_dob = not pending.get("dob")
+    missing_time = not pending.get("time")
+
+    if missing_dob:
+        logger.warning(f"[STEP-FLOW] DOB missing for {user.telegram_id}, resetting to DOB step")
+        user.pending_birth_data = None
+        user.state = STATE_AWAITING_DOB
+        session.commit()
+        await send_telegram_message(
+            chat_id,
+            "⚠️ Данные потерялись. Давай начнём заново.\n\n"
+            "📅 Укажи дату рождения:\n"
+            "• 15.05.1990\n"
+            "• 1990-05-15\n"
+            "• 15 мая 1990"
+        )
+        return
+
+    if missing_time:
+        logger.warning(f"[STEP-FLOW] Time missing for {user.telegram_id}, resetting to time step")
+        user.state = STATE_AWAITING_BIRTH_TIME
+        session.commit()
+        await send_telegram_message(
+            chat_id,
+            "⚠️ Время рождения пропало. Укажи его снова.\n\n"
+            "🕐 Время рождения:\n"
+            "• 14:30\n"
+            "• 7:45"
+        )
+        return
 
     pending["lat"] = coords["lat"]
     pending["lng"] = coords["lng"]
@@ -1394,11 +1442,27 @@ async def handle_start_command(session, user: User, chat_id: int):
     """
     logger.info(f"Handling /start for user {user.telegram_id}")
 
-    # Check whether user already has a chart
-    has_chart = session.query(UserNatalChart).filter_by(
+    # Check whether user already has a chart in any of the supported storage locations:
+    # - active UserNatalChart row (primary)
+    # - active AstroProfile with natal_chart_json (legacy profile storage)
+    # - user.natal_chart_json (oldest legacy column)
+    active_user_chart = session.query(UserNatalChart).filter_by(
         telegram_id=user.telegram_id,
         is_active=True
-    ).first() is not None
+    ).first()
+
+    profile_has_chart = False
+    if user.active_profile_id:
+        active_profile = session.query(AstroProfile).filter_by(
+            id=user.active_profile_id
+        ).first()
+        profile_has_chart = bool(active_profile and active_profile.natal_chart_json)
+
+    has_chart = (
+        active_user_chart is not None
+        or profile_has_chart
+        or bool(user.natal_chart_json)
+    )
 
     if has_chart:
         await send_telegram_message(

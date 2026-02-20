@@ -7,11 +7,21 @@ Implements LLM-free parsing for step-by-step birth data collection:
 - geocode_place(text) → {"lat", "lng", "location"} dict or None (async, uses Nominatim)
 """
 
+import os
 import re
 import logging
+from datetime import date as _date
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Nominatim requires a descriptive User-Agent with a contact address.
+# Operators should set NOMINATIM_USER_AGENT in their environment, e.g.:
+#   NOMINATIM_USER_AGENT="NatalNatalyBot/1.0 (+https://example.com; admin@example.com)"
+_NOMINATIM_USER_AGENT = os.getenv(
+    "NOMINATIM_USER_AGENT",
+    "NatalNatalyBot/1.0 (+https://github.com/genaforvena/natal_nataly)"
+)
 
 # Month name mapping (English + Russian abbreviated)
 _MONTH_NAMES = {
@@ -117,9 +127,10 @@ def parse_time(text: str) -> str | None:
         if _valid_time(hour, minute):
             return f"{hour:02d}:{minute:02d}"
 
-    # HH MM with optional am/pm
+    # HH MM with optional am/pm, but only when NOT followed by more digits
+    # (avoids matching "15 05 1990" as 15:05 instead of a date)
     m = re.search(
-        r'\b(\d{1,2})\s+(\d{2})\s*(am|pm)?\b',
+        r'\b(\d{1,2})\s+(\d{2})\s*(am|pm)?\b(?!\s*\d)',
         text, re.IGNORECASE
     )
     if m:
@@ -155,8 +166,9 @@ async def geocode_place(text: str) -> dict | None:
         "addressdetails": 0,
     }
     headers = {
-        # Nominatim requires a valid User-Agent identifying the application
-        "User-Agent": "NatalNatalyBot/1.0 (astrology-bot)"
+        # Nominatim usage policy requires a descriptive User-Agent with contact info.
+        # Configure via NOMINATIM_USER_AGENT environment variable.
+        "User-Agent": _NOMINATIM_USER_AGENT
     }
 
     try:
@@ -191,13 +203,14 @@ async def geocode_place(text: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _valid_date(year: int, month: int, day: int) -> bool:
+    """Return True only if (year, month, day) form a real calendar date."""
     if year < 1800:
         return False
-    if not (1 <= month <= 12):
+    try:
+        _date(year, month, day)
+        return True
+    except ValueError:
         return False
-    if not (1 <= day <= 31):
-        return False
-    return True
 
 
 def _valid_time(hour: int, minute: int) -> bool:
@@ -205,8 +218,16 @@ def _valid_time(hour: int, minute: int) -> bool:
 
 
 def _apply_ampm(hour: int, ampm: str) -> int:
-    if ampm == "pm" and hour != 12:
-        return hour + 12
-    if ampm == "am" and hour == 12:
-        return 0
+    """
+    Convert a 12-hour clock hour to 24-hour.
+    In 12-hour notation valid hours are 1–12.
+    Returns -1 to signal invalid input when ampm is given but hour is out of range.
+    """
+    if ampm:
+        if not (1 <= hour <= 12):
+            return -1  # Signal invalid 12-hour input
+        if ampm == "pm" and hour != 12:
+            return hour + 12
+        if ampm == "am" and hour == 12:
+            return 0
     return hour

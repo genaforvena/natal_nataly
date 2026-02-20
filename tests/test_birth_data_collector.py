@@ -60,6 +60,18 @@ class TestParseDate:
     def test_too_old_year_returns_none(self):
         assert parse_date("1700-01-01") is None
 
+    def test_feb_31_returns_none(self):
+        # February 31st does not exist
+        assert parse_date("31.02.1990") is None
+
+    def test_feb_29_leap_year_valid(self):
+        # 2000 is a leap year
+        assert parse_date("29.02.2000") == "2000-02-29"
+
+    def test_feb_29_non_leap_year_returns_none(self):
+        # 1991 is not a leap year
+        assert parse_date("29.02.1991") is None
+
 
 @pytest.mark.unit
 class TestParseTime:
@@ -97,6 +109,18 @@ class TestParseTime:
 
     def test_invalid_minute_returns_none(self):
         assert parse_time("10:99") is None
+
+    def test_ampm_hour_zero_returns_none(self):
+        # Hour 0 is not valid in 12-hour notation
+        assert parse_time("0:30 PM") is None
+
+    def test_ampm_hour_13_returns_none(self):
+        # Hour 13 is not valid in 12-hour notation
+        assert parse_time("13:30 PM") is None
+
+    def test_space_separated_not_matched_in_date(self):
+        # "15 05 1990" should NOT be parsed as time 15:05 (it's a date)
+        assert parse_time("15 05 1990") is None
 
 
 @pytest.mark.unit
