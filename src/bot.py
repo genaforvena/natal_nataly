@@ -24,12 +24,16 @@ from src.db import SessionLocal
 from src.models import User, BirthData, Reading, AstroProfile, UserNatalChart
 from src.models import (
     STATE_AWAITING_BIRTH_DATA,
+    STATE_AWAITING_DOB,
+    STATE_AWAITING_BIRTH_TIME,
+    STATE_AWAITING_BIRTH_PLACE,
     STATE_AWAITING_CLARIFICATION,
     STATE_AWAITING_CONFIRMATION,
     STATE_AWAITING_EDIT_CONFIRMATION,
     STATE_HAS_CHART,
     STATE_CHATTING_ABOUT_CHART
 )
+from src.birth_data_collector import parse_date, parse_time, geocode_place
 from scripts.debug import (
     DEBUG_MODE, 
     log_pipeline_stage_1_raw_input,
@@ -221,7 +225,7 @@ def get_or_create_user(session, telegram_id: str) -> User:
             user.last_seen = datetime.now(timezone.utc)
         else:
             logger.info(f"Creating new user: {telegram_id}")
-            user = User(telegram_id=telegram_id, state=STATE_AWAITING_BIRTH_DATA)
+            user = User(telegram_id=telegram_id, state=STATE_AWAITING_DOB)
             session.add(user)
         session.commit()
         logger.debug(f"User retrieved/created successfully: {telegram_id}, state={user.state}")
@@ -669,6 +673,161 @@ def create_and_activate_profile(session, user: User, birth_data: dict, chart: di
     return profile
 
 
+# ============================================================================
+# STEP-BY-STEP BIRTH DATA COLLECTION (no LLM involvement)
+# ============================================================================
+
+async def handle_awaiting_dob(session, user: User, chat_id: int, text: str):
+    """
+    Step 1 of 3: Ask / receive the date of birth without any LLM involvement.
+    Parses the date using regex-based logic and moves to the time step.
+    """
+    logger.info(f"[STEP-FLOW] Handling awaiting_dob for user {user.telegram_id}")
+
+    dob = parse_date(text)
+
+    if not dob:
+        await send_telegram_message(
+            chat_id,
+            "📅 Пожалуйста, укажи дату рождения.\n\n"
+            "Примеры:\n"
+            "• 15.05.1990\n"
+            "• 1990-05-15\n"
+            "• 15 мая 1990"
+        )
+        return
+
+    # Store partial data
+    pending = {"dob": dob}
+    user.pending_birth_data = json.dumps(pending)
+    user.state = STATE_AWAITING_BIRTH_TIME
+    session.commit()
+
+    await send_telegram_message(
+        chat_id,
+        f"✅ Дата: {dob}\n\n"
+        "🕐 Теперь укажи время рождения.\n\n"
+        "Примеры:\n"
+        "• 14:30\n"
+        "• 7:45\n"
+        "• 02:15"
+    )
+
+
+async def handle_awaiting_birth_time(session, user: User, chat_id: int, text: str):
+    """
+    Step 2 of 3: Receive the time of birth without any LLM involvement.
+    Parses the time using regex-based logic and moves to the place step.
+    """
+    logger.info(f"[STEP-FLOW] Handling awaiting_birth_time for user {user.telegram_id}")
+
+    birth_time = parse_time(text)
+
+    if not birth_time:
+        await send_telegram_message(
+            chat_id,
+            "🕐 Не удалось распознать время. Пожалуйста, укажи время рождения.\n\n"
+            "Примеры:\n"
+            "• 14:30\n"
+            "• 7:45\n"
+            "• 02:15"
+        )
+        return
+
+    # Update partial data
+    try:
+        pending = json.loads(user.pending_birth_data or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pending = {}
+    pending["time"] = birth_time
+    user.pending_birth_data = json.dumps(pending)
+    user.state = STATE_AWAITING_BIRTH_PLACE
+    session.commit()
+
+    await send_telegram_message(
+        chat_id,
+        f"✅ Время: {birth_time}\n\n"
+        "📍 Теперь укажи место рождения (город или страну).\n\n"
+        "Примеры:\n"
+        "• Москва\n"
+        "• New York\n"
+        "• Нижний Новгород, Россия"
+    )
+
+
+async def handle_awaiting_birth_place(session, user: User, chat_id: int, text: str):
+    """
+    Step 3 of 3: Receive the place of birth and geocode it using Nominatim.
+    No LLM is involved in data extraction; only a free geocoding API is used.
+    On success, transitions to STATE_AWAITING_CONFIRMATION.
+    """
+    logger.info(f"[STEP-FLOW] Handling awaiting_birth_place for user {user.telegram_id}")
+
+    coords = await geocode_place(text)
+
+    if not coords:
+        await send_telegram_message(
+            chat_id,
+            "📍 Не удалось найти указанное место. Попробуй другое название.\n\n"
+            "Например:\n"
+            "• Москва\n"
+            "• London, UK\n"
+            "• Нью-Йорк"
+        )
+        return
+
+    # Merge into pending data
+    try:
+        pending = json.loads(user.pending_birth_data or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pending = {}
+
+    pending["lat"] = coords["lat"]
+    pending["lng"] = coords["lng"]
+    pending["location"] = coords["location"]
+
+    # Compute timezone
+    tz_validation = validate_timezone(coords["lat"], coords["lng"], None)
+
+    normalized_birth_data = {
+        "dob": pending.get("dob"),
+        "time": pending.get("time"),
+        "lat": coords["lat"],
+        "lng": coords["lng"],
+        "timezone": tz_validation["timezone"],
+        "timezone_source": tz_validation["source"],
+        "timezone_validation_status": tz_validation["validation_status"],
+        "location": coords["location"],
+    }
+
+    user.pending_birth_data = json.dumps(pending)
+    user.pending_normalized_data = json.dumps(normalized_birth_data)
+    user.state = STATE_AWAITING_CONFIRMATION
+    session.commit()
+
+    # Build confirmation message
+    dob = pending.get("dob", "—")
+    birth_time = pending.get("time", "—")
+    location = coords["location"]
+    lat = coords["lat"]
+    lng = coords["lng"]
+    tz = tz_validation["timezone"]
+
+    confirmation_msg = (
+        "✨ <b>Проверь данные рождения:</b>\n\n"
+        f"📅 Дата: {dob}\n"
+        f"🕐 Время: {birth_time}\n"
+        f"📍 Место: {location}\n"
+        f"🌐 Координаты: {lat:.4f}, {lng:.4f}\n"
+        f"🕰 Часовой пояс: {tz}\n\n"
+        "⚠️ Проверь данные внимательно — от них зависит точность карты.\n\n"
+        "Ответь <b>CONFIRM</b> для подтверждения или <b>EDIT</b> для исправления."
+    )
+
+    await send_telegram_message(chat_id, confirmation_msg)
+    logger.info(f"[STEP-FLOW] Pending data ready for confirmation for user {user.telegram_id}")
+
+
 async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: str):
     """Handle messages when user is in awaiting_birth_data state"""
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
@@ -886,24 +1045,24 @@ async def handle_awaiting_confirmation(session, user: User, chat_id: int, text: 
                     logger.warning(f"Could not send error message to chat_id={chat_id}, chat may be invalid")
             except Exception as send_error:
                 logger.error(f"Failed to send error message to chat_id={chat_id}: {send_error}")
-            user.state = STATE_AWAITING_BIRTH_DATA
+            user.state = STATE_AWAITING_DOB
             session.commit()
     
     elif text_upper == "EDIT":
-        # Clear pending data and go back to input
+        # Clear pending data and restart from step 1 (date of birth)
         user.pending_birth_data = None
         user.pending_normalized_data = None
-        user.state = STATE_AWAITING_BIRTH_DATA
+        user.state = STATE_AWAITING_DOB
         session.commit()
-        
+
         await send_telegram_message(
             chat_id,
-            "✏️ Хорошо, давай попробуем ещё раз.\n\n"
-            "Отправь данные рождения в формате:\n"
-            "DOB: YYYY-MM-DD\n"
-            "Time: HH:MM\n"
-            "Lat: XX.XXXX\n"
-            "Lng: XX.XXXX"
+            "✏️ Хорошо, начнём заново.\n\n"
+            "📅 Укажи дату рождения:\n"
+            "Например:\n"
+            "• 15.05.1990\n"
+            "• 1990-05-15\n"
+            "• 15 мая 1990"
         )
     
     else:
@@ -1227,6 +1386,49 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
 # INTENT-BASED HANDLERS
 # ============================================================================
 
+async def handle_start_command(session, user: User, chat_id: int):
+    """
+    Handle /start command.
+    For users without a natal chart: begin the step-by-step onboarding flow.
+    For returning users: remind them of what they can do.
+    """
+    logger.info(f"Handling /start for user {user.telegram_id}")
+
+    # Check whether user already has a chart
+    has_chart = session.query(UserNatalChart).filter_by(
+        telegram_id=user.telegram_id,
+        is_active=True
+    ).first() is not None
+
+    if has_chart:
+        await send_telegram_message(
+            chat_id,
+            "👋 С возвращением!\n\n"
+            "Твоя натальная карта уже создана. Ты можешь:\n"
+            "• Задавать вопросы о своей карте\n"
+            "• /my_data — посмотреть данные рождения\n"
+            "• /my_chart_raw — получить сырые данные карты\n"
+            "• /my_readings — история интерпретаций\n"
+            "• /reset_thread — очистить историю разговора\n"
+            "• /edit_birth — изменить данные рождения"
+        )
+    else:
+        # Start step-by-step flow
+        user.state = STATE_AWAITING_DOB
+        session.commit()
+        await send_telegram_message(
+            chat_id,
+            "🔮 Привет! Я Nataly — твой личный астрологический ассистент.\n\n"
+            "Давай создадим твою натальную карту. Мне понадобятся три вещи:\n"
+            "дата, время и место рождения.\n\n"
+            "📅 Начнём с даты рождения.\n"
+            "Напиши её в любом формате, например:\n"
+            "• 15.05.1990\n"
+            "• 1990-05-15\n"
+            "• 15 мая 1990"
+        )
+
+
 async def handle_profiles_command(session, user: User, chat_id: int):
     """Handle /profiles command to list all user profiles"""
     logger.info(f"Handling /profiles command for user {user.telegram_id}")
@@ -1532,7 +1734,18 @@ async def route_message(session, user: User, chat_id: int, text: str):
     Uses intent classification for users with charts to enable conversational flow.
     """
     logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
-    
+
+    # Step-by-step birth data collection (new flow, no LLM)
+    if user.state == STATE_AWAITING_DOB:
+        await handle_awaiting_dob(session, user, chat_id, text)
+        return
+    elif user.state == STATE_AWAITING_BIRTH_TIME:
+        await handle_awaiting_birth_time(session, user, chat_id, text)
+        return
+    elif user.state == STATE_AWAITING_BIRTH_PLACE:
+        await handle_awaiting_birth_place(session, user, chat_id, text)
+        return
+
     # For users in data collection states, use traditional state-based routing
     if user.state == STATE_AWAITING_BIRTH_DATA:
         await handle_awaiting_birth_data(session, user, chat_id, text)
@@ -1654,6 +1867,13 @@ async def handle_telegram_update(update: dict):
                     return {"ok": True}
                 
                 # Handle other commands
+                if text.startswith("/start"):
+                    await handle_start_command(session, user, chat_id)
+                    message_sent_successfully = True
+                    logger.info(f"=== Update processed successfully (/start command) for telegram_id={telegram_id} ===")
+                    processing_successful = True
+                    return {"ok": True}
+
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
                     message_sent_successfully = True  # These commands send messages
