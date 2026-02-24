@@ -74,6 +74,7 @@ class TestMessageTextIntegration:
         """
         Test debounce throttling: first message is processed, subsequent messages
         from the same user within the debounce window are throttled (not combined).
+        Uses a deterministic mock for should_debounce to avoid timing-dependent failures.
         """
         user_id = 99999
         
@@ -87,20 +88,23 @@ class TestMessageTextIntegration:
         
         mock_bot_handler.side_effect = capture_text
         
-        # First message is processed immediately
-        payload1 = create_webhook_payload(user_id, 1, "First message")
-        response1 = client.post("/webhook", json=payload1)
-        assert response1.status_code == 200
-        assert response1.json().get("throttled") is not True
-        
-        # Subsequent messages within the debounce window are throttled
-        payload2 = create_webhook_payload(user_id, 2, "Second message")
-        response2 = client.post("/webhook", json=payload2)
-        assert response2.json().get("throttled") is True
-        
-        payload3 = create_webhook_payload(user_id, 3, "Third message")
-        response3 = client.post("/webhook", json=payload3)
-        assert response3.json().get("throttled") is True
+        # Patch should_debounce: first call passes through, subsequent calls throttle
+        debounce_side_effects = [False, True, True]
+        with patch('src.main.should_debounce', side_effect=debounce_side_effects):
+            # First message is processed immediately (debounce returns False)
+            payload1 = create_webhook_payload(user_id, 1, "First message")
+            response1 = client.post("/webhook", json=payload1)
+            assert response1.status_code == 200
+            assert response1.json().get("throttled") is not True
+            
+            # Subsequent messages are throttled (debounce returns True)
+            payload2 = create_webhook_payload(user_id, 2, "Second message")
+            response2 = client.post("/webhook", json=payload2)
+            assert response2.json().get("throttled") is True
+            
+            payload3 = create_webhook_payload(user_id, 3, "Third message")
+            response3 = client.post("/webhook", json=payload3)
+            assert response3.json().get("throttled") is True
         
         # Only the first message reached the bot handler
         assert len(processed_texts) == 1
