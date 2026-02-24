@@ -1189,9 +1189,17 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
                 {"role": "assistant", "content": reading},
             ],
         )
-        # Also keep legacy thread_manager in sync for backward compat
-        add_message_to_thread(session, user.telegram_id, "user", text)
-        add_message_to_thread(session, user.telegram_id, "assistant", reading)
+        # Also keep legacy thread_manager in sync for backward compat,
+        # but don't let failures here prevent responding to the user.
+        try:
+            add_message_to_thread(session, user.telegram_id, "user", text)
+            add_message_to_thread(session, user.telegram_id, "assistant", reading)
+        except Exception as legacy_err:
+            logger.warning(
+                "Failed to sync legacy thread for user %s: %s",
+                user.telegram_id,
+                legacy_err,
+            )
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
