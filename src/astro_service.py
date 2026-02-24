@@ -1,9 +1,9 @@
 """
-Astro Service - Unified astrology calculation layer.
+Astro Service - Unified astrology calculation interface.
 
-Merges chart_builder.py and transit_builder.py into a single import surface.
+Provides a stable, unified API over chart_builder.py and transit_builder.py.
 All existing implementations are preserved in their original modules; this
-module re-exports them under a clean, stable API.
+module re-exports them under a clean, minimal API.
 
 Public API:
     generate_natal_chart(birth_data: dict) -> dict

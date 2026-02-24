@@ -1,9 +1,9 @@
 """
 Intent detection for natural language routing.
 
-Uses lightweight keyword/heuristic detection instead of a full LLM
-classify_intent() call, eliminating the extra round-trip that previously
-added latency before every response.
+Uses lightweight keyword/heuristic matching to classify user messages,
+eliminating the extra LLM round-trip that previously added latency before
+every response.
 
 Maps to simplified routing categories:
 - provide_birth_data patterns → birth_input
