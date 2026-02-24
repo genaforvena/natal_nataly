@@ -1,47 +1,71 @@
-# Conversation Thread Management
+# Conversation Context Management
 
 ## Overview
 
-The natal_nataly bot now includes conversation thread management that maintains context for each user's conversation with the LLM. This ensures more coherent and contextually aware responses while preventing database overflow.
+The natal_nataly bot maintains per-user conversation context to provide coherent, context-aware LLM responses.  
+There are two layers — a **new JSON-based session** (primary) and a **legacy DB-row-per-message thread** (kept for backward compatibility):
 
-## Features
+| Layer | Module | Storage | Max messages | Notes |
+|---|---|---|---|---|
+| Session (primary) | `session_manager.py` | `User.conversation_session_json` (JSON column) | 20 | Active, replaces thread |
+| Thread (legacy) | `thread_manager.py` | `conversation_messages` table | 10 | Kept in sync; do not rely on for new code |
 
-### 1. Thread Storage
-- Each user has a separate conversation thread
-- Messages are stored in the `conversation_messages` table
-- Each message contains: role (user/assistant), content, timestamp, and first_pair flag
+## Session Manager (Primary)
 
-### 2. FIFO Management (First In, First Out)
-- **Maximum 10 messages** per user thread
-- **First 2 messages (user + assistant) are NEVER deleted** - they establish the main conversation topic
-- When the thread exceeds 10 messages, the **oldest non-fixed messages are automatically deleted**
-- Latest messages are always preserved
+`src/session_manager.py` stores the last N conversation exchanges as a JSON array directly on the `User` record.
 
-Example:
+### How It Works
+
+- Messages are stored as a list: `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}, ...]`
+- The list is capped at **20 messages** (FIFO eviction – oldest messages are dropped first)
+- Data lives in `User.conversation_session_json` – no extra table required
+
+### API
+
+```python
+from src.session_manager import get_session_context, update_session_context, reset_session_context
+
+# Load context
+messages = get_session_context(user)  # → list of {role, content} dicts
+
+# Append new exchange and persist
+update_session_context(session, user, [
+    {"role": "user",      "content": "..."},
+    {"role": "assistant", "content": "..."},
+])
+
+# Clear context
+reset_session_context(session, user)
 ```
-Initial conversation:
-1. User: "What is my sun sign?" [FIXED]
-2. Assistant: "Your sun is in Taurus..." [FIXED]
-3. User: "What about my moon?"
-4. Assistant: "Your moon is in Cancer..."
-...continuing until message 12
 
-After trimming (keeps 10):
-1. User: "What is my sun sign?" [FIXED - kept]
-2. Assistant: "Your sun is in Taurus..." [FIXED - kept]
-3-4. [DELETED - oldest non-fixed]
-5-12. [KEPT - remaining 8 newest messages]
+### Configuration
+
+```python
+MAX_SESSION_MESSAGES = 20  # Last N messages kept (in session_manager.py)
 ```
 
-### 3. Context-Aware LLM Responses
-- Conversation history is automatically passed to LLM on each request
-- LLM receives full thread context for more accurate and personalized responses
-- Maintains conversation continuity across multiple exchanges
+## Legacy Thread Manager
 
-### 4. User Commands
+`src/thread_manager.py` and the `conversation_messages` DB table remain in the codebase for backward compatibility.  
+New messages are still written to the legacy table so existing tooling continues to work, but the **session manager is the authoritative source for LLM context**.
 
-#### `/reset_thread`
-Clears the entire conversation history for the user and starts fresh.
+### Legacy Thread Features
+
+- **FIFO with fixed first pair**: Maximum 10 messages; first user+assistant pair is never evicted
+- **`/reset_thread` command**: Clears the legacy thread (also resets session context)
+
+### Legacy Constants (`thread_manager.py`)
+
+```python
+MAX_THREAD_LENGTH = 10  # Maximum messages per legacy thread
+FIXED_PAIR_COUNT = 2    # First pair that's never deleted
+```
+
+## User Commands
+
+### `/reset_thread`
+
+Clears conversation history (both session JSON and legacy thread) and starts fresh.
 
 **Usage:**
 ```
@@ -55,150 +79,28 @@ Clears the entire conversation history for the user and starts fresh.
 Теперь мы начинаем с чистого листа. Задай мне вопрос о своей натальной карте!
 ```
 
-## Technical Implementation
+## Context-Aware LLM Responses
 
-### Database Model
-
-```python
-class ConversationMessage(Base):
-    __tablename__ = "conversation_messages"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_id = Column(String, nullable=False, index=True)
-    role = Column(String, nullable=False)  # "user" or "assistant"
-    content = Column(Text, nullable=False)
-    is_first_pair = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-```
-
-### Thread Manager Functions
-
-Located in `thread_manager.py`:
-
-1. **`add_message_to_thread(session, telegram_id, role, content)`**
-   - Adds a new message to the thread
-   - Automatically marks first pair
-   - Triggers trimming if needed
-
-2. **`get_conversation_thread(session, telegram_id)`**
-   - Returns list of messages in LLM-compatible format
-   - Format: `[{"role": "user", "content": "..."}, ...]`
-
-3. **`trim_thread_if_needed(session, telegram_id)`**
-   - Automatically called after adding messages
-   - Removes oldest non-fixed messages when thread exceeds 10
-
-4. **`reset_thread(session, telegram_id)`**
-   - Clears entire conversation thread
-   - Returns count of deleted messages
-
-5. **`get_thread_summary(session, telegram_id)`**
-   - Returns statistics about the thread
-   - Useful for debugging and analytics
-
-### Integration with LLM
-
-The thread context is automatically included in LLM calls:
+The session context is automatically included in LLM calls:
 
 ```python
 # In handle_chatting_about_chart()
-conversation_history = get_conversation_thread(session, user.telegram_id)
+conversation_history = get_session_context(user)
 reading = generate_assistant_response(context, text, conversation_history=conversation_history)
-```
-
-## Usage Examples
-
-### Normal Conversation Flow
-
-```
-User: "What is my sun sign?"
-Bot: "Your sun is in Taurus..."
-[Thread: 2 messages]
-
-User: "What does that mean?"
-Bot: "Taurus sun indicates..."
-[Thread: 4 messages]
-
-User: "Tell me about relationships"
-Bot: "Based on what we discussed about your Taurus sun..."
-[Thread: 6 messages - LLM has context from previous messages]
-```
-
-### Thread Trimming
-
-```
-After 12 messages total:
-- Messages 1-2: [KEPT] First pair (fixed)
-- Messages 3-4: [DELETED] Oldest non-fixed
-- Messages 5-12: [KEPT] Latest 8 messages
-
-Final thread: 10 messages
-```
-
-### Resetting Thread
-
-```
-User: /reset_thread
-Bot: "✅ История разговора очищена! Удалено сообщений: 8"
-
-User: "What's my moon sign?"
-Bot: "Your moon is in Cancer..."
-[New thread started: 2 messages]
 ```
 
 ## Testing
 
-Two test suites are included:
+```bash
+# Thread manager unit tests
+pytest tests/test_thread_manager.py
 
-### Unit Tests (`tests/test_thread_manager.py`)
-- Basic thread operations
-- FIFO trimming logic
-- Thread reset functionality
-- Conversation history format validation
-
-Run with: `pytest tests/test_thread_manager.py`
-
-### Integration Tests (pytest suite under `tests/`)
-- Realistic conversation flow
-- Thread format compatibility with LLM API
-
-Run with: `pytest tests/`
-
-## Configuration
-
-No additional configuration needed. The thread management is enabled by default for all users.
-
-Constants in `thread_manager.py`:
-```python
-MAX_THREAD_LENGTH = 10  # Maximum messages per thread
-FIXED_PAIR_COUNT = 2    # First pair that's never deleted
+# All tests
+pytest tests/
 ```
-
-## Database Migration
-
-The new `conversation_messages` table is automatically created when the bot starts. No manual migration needed.
-
-If you're running in production, ensure to backup your database before deploying this update.
-
-## Backwards Compatibility
-
-✅ The implementation is fully backwards compatible:
-- Existing user states and workflows are unchanged
-- Old chat functionality continues to work
-- Thread management is added seamlessly without breaking changes
-- Users without existing threads start with empty thread automatically
 
 ## Performance Considerations
 
-- Automatic cleanup prevents database bloat
-- Indexed fields (telegram_id, created_at) ensure fast queries
-- Minimal overhead - only active during chat interactions
-- Thread retrieval is optimized for LLM integration
-
-## Future Enhancements (Optional)
-
-1. Analytics on conversation patterns
-2. Export conversation history
-3. Configurable max thread length per user
-4. Thread archiving instead of deletion
-5. Summary generation for deleted messages
+- No extra DB table reads for the session context (loaded with the User row)
+- Automatic FIFO eviction keeps the JSON payload small
+- Legacy thread table is indexed on `telegram_id` and `created_at` for fast queries

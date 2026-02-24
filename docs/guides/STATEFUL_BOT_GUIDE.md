@@ -13,37 +13,35 @@ The bot has been upgraded to a stateful conversational astrologer with:
 
 ### 1. Externalized Prompt System
 
-**All LLM prompts are now stored as text files in `/prompts/` directory:**
+**All LLM prompts are now stored as text files in `src/prompts/` directory:**
 
 ```
-prompts/
-├── birth_data_extractor.system.txt     # System prompt for extracting birth data
-├── birth_data_extractor.user.txt      # User prompt template for extraction
-├── clarification_question.system.txt  # System prompt for generating follow-up questions
-├── clarification_question.user.txt    # User prompt template for clarification
-├── astrologer_chat.system.txt         # System prompt for astrology chat
-└── astrologer_chat.user.txt           # User prompt template for chat
+src/prompts/
+├── personality.md               # Bot personality / system prompt
+├── parser/                      # Prompts for birth data extraction
+└── responses/                   # Prompts for response generation
 ```
 
 **To change bot behavior:**
-1. Edit the relevant `.txt` file in `prompts/`
+1. Edit the relevant file in `src/prompts/`
 2. Restart the bot (changes load at startup)
 3. No Python code changes needed!
 
 **Example: Changing astrologer tone**
 ```bash
-# Edit the system prompt
-nano prompts/astrologer_chat.system.txt
+# Edit the personality prompt
+nano src/prompts/personality.md
 # Change tone from professional to casual, mystical, etc.
 ```
 
 ### 2. User State Machine
 
-Users progress through states:
-- `awaiting_birth_data` → User needs to provide birth information
-- `awaiting_clarification` → Some birth data is missing, bot asks for it
-- `has_chart` → Chart is ready, user can start asking questions
-- `chatting_about_chart` → User is actively chatting about their chart
+Users progress through simplified states:
+- `onboarding` → User hasn't provided birth data yet (replaces `awaiting_birth_data` / `awaiting_clarification`)
+- `ready` → Chart is ready, user can start asking questions (replaces `has_chart` / `chatting_about_chart`)
+- `editing` → User is editing/updating birth data (replaces `awaiting_edit_confirmation`)
+
+> **Legacy states** (`awaiting_birth_data`, `awaiting_clarification`, `awaiting_confirmation`, `has_chart`, `chatting_about_chart`, `awaiting_edit_confirmation`) are still accepted for backward compatibility with existing database rows.
 
 ### 3. Free-Form Birth Data Input
 
@@ -175,8 +173,8 @@ Tests cover:
 cp .env.example .env
 # Edit .env with your API keys
 
-# Start server
-uvicorn main:app --reload
+# Start server (from repo root)
+uvicorn src.main:app --reload
 
 # Or use the start script
 ./start.sh
@@ -219,21 +217,23 @@ docker-compose up -d
 
 ## 🎨 Customization
 
-Want to change bot behavior? Edit prompt files:
+Want to change bot behavior? Edit prompt files in `src/prompts/`:
 
 **Change astrologer personality:**
 ```bash
-nano prompts/astrologer_chat.system.txt
+nano src/prompts/personality.md
 ```
 
-**Change clarification style:**
+**Change response style or other prompts:**
 ```bash
-nano prompts/clarification_question.system.txt
+ls src/prompts/responses/
+nano src/prompts/responses/<prompt_file>
 ```
 
 **Change extraction accuracy:**
 ```bash
-nano prompts/birth_data_extractor.system.txt
+ls src/prompts/parser/
+nano src/prompts/parser/<prompt_file>
 ```
 
 No code changes required - just restart the bot!
@@ -241,16 +241,12 @@ No code changes required - just restart the bot!
 ## 🐛 Troubleshooting
 
 **Bot not understanding birth data:**
-- Check `prompts/birth_data_extractor.system.txt`
+- Check `src/prompts/parser/` for birth data extraction prompts
 - Increase example variety in the prompt
 - Add specific format examples
 
-**Clarification questions too formal:**
-- Edit `prompts/clarification_question.system.txt`
-- Adjust tone and language
-
 **Readings not matching expected style:**
-- Modify `prompts/astrologer_chat.system.txt`
+- Modify `src/prompts/personality.md`
 - Add specific guidelines or examples
 
 ## 📚 Migration from Old System
