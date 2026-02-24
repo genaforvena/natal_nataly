@@ -39,12 +39,8 @@ def mock_dedup():
 @pytest.fixture
 def mock_throttle():
     """Mock the message throttling to avoid timing issues in tests."""
-    with patch('src.main.has_pending_reply') as mock_has_pending, \
-         patch('src.main.get_pending_messages') as mock_get_pending:
-        # No pending messages by default
-        mock_has_pending.return_value = False
-        mock_get_pending.return_value = []
-        yield (mock_has_pending, mock_get_pending)
+    with patch('src.main.should_debounce', return_value=False):
+        yield
 
 
 @pytest.fixture

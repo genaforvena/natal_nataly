@@ -9,13 +9,11 @@ from src.llm import (
     extract_birth_data,
     generate_clarification_question,
     interpret_chart,
-    classify_intent,
     generate_assistant_response,
     interpret_transits,
     extract_birth_data_async,
     generate_clarification_question_async,
     interpret_chart_async,
-    classify_intent_async,
     generate_assistant_response_async,
     interpret_transits_async,
     MODEL
@@ -23,6 +21,9 @@ from src.llm import (
 from src.db import SessionLocal
 from src.models import User, BirthData, Reading, AstroProfile, UserNatalChart
 from src.models import (
+    STATE_ONBOARDING,
+    STATE_READY,
+    STATE_EDITING,
     STATE_AWAITING_BIRTH_DATA,
     STATE_AWAITING_CLARIFICATION,
     STATE_AWAITING_CONFIRMATION,
@@ -48,11 +49,12 @@ from scripts.debug_commands import handle_debug_command
 from src.user_commands import handle_user_command
 from src.chart_parser import parse_uploaded_chart, validate_chart_data, MAX_ORIGINAL_INPUT_LENGTH
 from src.thread_manager import add_message_to_thread, get_conversation_thread, reset_thread, get_thread_summary
+from src.session_manager import get_session_context, update_session_context, reset_session_context
 from src.services.date_parser import parse_transit_date
 from src.services.transit_builder import build_transits, format_transits_for_llm
 from src.services.intent_router import detect_request_type, detect_request_type_async
 from src.prompt_loader import load_response_prompt
-from src.message_cache import mark_all_pending_as_replied, mark_message_as_replied
+from src.message_cache import update_message_analytics
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -221,7 +223,7 @@ def get_or_create_user(session, telegram_id: str) -> User:
             user.last_seen = datetime.now(timezone.utc)
         else:
             logger.info(f"Creating new user: {telegram_id}")
-            user = User(telegram_id=telegram_id, state=STATE_AWAITING_BIRTH_DATA)
+            user = User(telegram_id=telegram_id, state=STATE_ONBOARDING)
             session.add(user)
         session.commit()
         logger.debug(f"User retrieved/created successfully: {telegram_id}, state={user.state}")
@@ -674,7 +676,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
     logger.info(f"Handling awaiting_birth_data for user {user.telegram_id}")
     
     # Get conversation history and user profile for context
-    conversation_history = get_conversation_thread(session, user.telegram_id)
+    conversation_history = get_session_context(user)
     from src.user_profile_manager import UserProfileManager
     user_profile = UserProfileManager.get_user_profile(session, user.telegram_id)
     
@@ -1024,7 +1026,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
     logger.info(f"Handling awaiting_clarification for user {user.telegram_id}")
     
     # Get conversation history and user profile for context
-    conversation_history = get_conversation_thread(session, user.telegram_id)
+    conversation_history = get_session_context(user)
     from src.user_profile_manager import UserProfileManager
     user_profile = UserProfileManager.get_user_profile(session, user.telegram_id)
     
@@ -1141,13 +1143,13 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
             else:
                 chart = json.loads(profile.natal_chart_json)
         
-        # Update state to chatting_about_chart if it was has_chart
-        if user.state == STATE_HAS_CHART:
-            update_user_state(session, user.telegram_id, STATE_CHATTING_ABOUT_CHART)
+        # Update state to READY if it was has_chart
+        if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
+            update_user_state(session, user.telegram_id, STATE_READY)
         
         # Get conversation history BEFORE adding current message to avoid duplication
-        conversation_history = get_conversation_thread(session, user.telegram_id)
-        logger.debug("Retrieved conversation history: %d messages", len(conversation_history))
+        conversation_history = get_session_context(user)
+        logger.debug("Retrieved session context: %d messages", len(conversation_history))
         
         # Get user profile for personalization
         from src.user_profile_manager import UserProfileManager
@@ -1178,9 +1180,26 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
             )
             prompt_name = "astrologer_chat"
         
-        # Add user message and assistant response to conversation thread after generation
-        add_message_to_thread(session, user.telegram_id, "user", text)
-        add_message_to_thread(session, user.telegram_id, "assistant", reading)
+        # Persist conversation exchange to session JSON (replaces thread_manager)
+        update_session_context(
+            session,
+            user,
+            [
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": reading},
+            ],
+        )
+        # Also keep legacy thread_manager in sync for backward compat,
+        # but don't let failures here prevent responding to the user.
+        try:
+            add_message_to_thread(session, user.telegram_id, "user", text)
+            add_message_to_thread(session, user.telegram_id, "assistant", reading)
+        except Exception as legacy_err:
+            logger.warning(
+                "Failed to sync legacy thread for user %s: %s",
+                user.telegram_id,
+                legacy_err,
+            )
         
         # Save reading to database
         reading_record = save_reading(session, user.telegram_id, reading)
@@ -1197,7 +1216,7 @@ async def handle_chatting_about_chart(session, user: User, chat_id: int, text: s
         from src.user_profile_manager import update_profile_after_interaction
         try:
             # Get updated conversation history (now includes latest exchange)
-            updated_history = get_conversation_thread(session, user.telegram_id)
+            updated_history = get_session_context(user)
             update_profile_after_interaction(
                 session=session,
                 telegram_id=user.telegram_id,
@@ -1373,20 +1392,22 @@ async def handle_reset_thread_command(session, user: User, chat_id: int):
     
     try:
         # Get thread summary before reset (for logging)
-        summary = get_thread_summary(session, user.telegram_id)
-        logger.info(f"Thread before reset: {summary}")
+        existing_ctx = get_session_context(user)
+        logger.info(f"Session context before reset: {len(existing_ctx)} messages")
         
-        # Reset the thread
-        deleted_count = reset_thread(session, user.telegram_id)
+        # Reset the session context (new architecture)
+        reset_session_context(session, user)
+        # Also reset legacy thread for backward compat
+        reset_thread(session, user.telegram_id)
         
         # Send confirmation message
         await send_telegram_message(
             chat_id,
-            f"✅ История разговора очищена! Удалено сообщений: {deleted_count}\n\n"
+            "✅ История разговора очищена!\n\n"
             "Теперь мы начинаем с чистого листа. Задай мне вопрос о своей натальной карте!"
         )
         
-        logger.info(f"Thread reset successfully for user {user.telegram_id}, deleted {deleted_count} messages")
+        logger.info(f"Session context reset for user {user.telegram_id}")
         
     except Exception as e:
         logger.exception(f"Error handling reset_thread command: {e}")
@@ -1528,13 +1549,18 @@ async def handle_transit_question(session, user: User, chat_id: int, text: str):
 
 async def route_message(session, user: User, chat_id: int, text: str):
     """
-    Route message based on user state and intent classification.
-    Uses intent classification for users with charts to enable conversational flow.
+    Route message based on user lifecycle state.
+
+    Simplified flow:
+    - ONBOARDING / legacy awaiting_* states → collect birth data
+    - READY / legacy has_chart states → single LLM call via handle_chatting_about_chart
+      (keyword routing replaces pre-classification LLM call)
+    - EDITING / legacy edit_confirmation → handle editing
     """
     logger.info(f"Routing message for user {user.telegram_id}, state={user.state}")
     
-    # For users in data collection states, use traditional state-based routing
-    if user.state == STATE_AWAITING_BIRTH_DATA:
+    # Onboarding / data-collection states
+    if user.state in [STATE_ONBOARDING, STATE_AWAITING_BIRTH_DATA]:
         await handle_awaiting_birth_data(session, user, chat_id, text)
         return
     elif user.state == STATE_AWAITING_CLARIFICATION:
@@ -1547,43 +1573,38 @@ async def route_message(session, user: User, chat_id: int, text: str):
         await handle_awaiting_chart_upload(session, user, chat_id, text)
         return
     
-    # For users with charts, use intent-based routing for conversational flow
-    if user.state in [STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
+    # Ready states – keyword-based routing, then single LLM call
+    if user.state in [STATE_READY, STATE_HAS_CHART, STATE_CHATTING_ABOUT_CHART]:
         try:
-            # Use async LLM-based intent detection
+            # Lightweight keyword detection (no LLM call) – single LLM call downstream
             intent_type = await detect_request_type_async(text)
+            logger.info(f"Intent detected (keyword): {intent_type}")
             
-            logger.info(f"Intent detected: {intent_type}")
-            
-            # Route based on intent type
             if intent_type == "birth_input":
-                # User wants to provide new birth data (maybe for a new profile)
-                logger.info("User providing new birth data, switching to awaiting_birth_data state")
-                update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+                # User wants to provide birth data for a new profile
+                logger.info("User providing new birth data, switching to onboarding state")
+                update_user_state(session, user.telegram_id, STATE_ONBOARDING)
                 await handle_awaiting_birth_data(session, user, chat_id, text)
-                
             elif intent_type == "change_profile":
-                # User wants to switch profiles
                 logger.info("User wants to change profile")
                 await handle_change_profile(session, user, chat_id, text)
-                
-            elif intent_type == "natal_question":
-                # User asking about their natal chart
-                await handle_chatting_about_chart(session, user, chat_id, text)
-                
             else:
-                # Default to chatting about chart
-                logger.warning("Unknown intent type, defaulting to chart chat")
+                # Default: natal question → single LLM orchestrator call
                 await handle_chatting_about_chart(session, user, chat_id, text)
                 
         except Exception as e:
-            logger.exception(f"Error in intent-based routing: {e}")
-            # Fallback to traditional routing
+            logger.exception(f"Error in routing: {e}")
             await handle_chatting_about_chart(session, user, chat_id, text)
-    else:
-        logger.error(f"Unknown user state: {user.state}")
-        await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
-        update_user_state(session, user.telegram_id, STATE_AWAITING_BIRTH_DATA)
+        return
+    
+    # Editing state
+    if user.state in [STATE_EDITING, STATE_AWAITING_EDIT_CONFIRMATION]:
+        await handle_awaiting_birth_data(session, user, chat_id, text)
+        return
+    
+    logger.error(f"Unknown user state: {user.state}")
+    await send_telegram_message(chat_id, "Произошла ошибка. Пожалуйста, начните сначала с предоставления данных рождения.")
+    update_user_state(session, user.telegram_id, STATE_ONBOARDING)
 
 
 async def handle_telegram_update(update: dict):
@@ -1594,12 +1615,6 @@ async def handle_telegram_update(update: dict):
     logger.info("=== Processing Telegram update ===")
     update_type = "message" if "message" in update else "other"
     logger.debug(f"Update type: {update_type}")
-    
-    telegram_id = None
-    message_id = None
-    processing_successful = False
-    is_command = False
-    message_sent_successfully = False
     
     try:
         # Extract message data
@@ -1633,50 +1648,36 @@ async def handle_telegram_update(update: dict):
             
             # Check for commands first
             if text.startswith("/"):
-                is_command = True
                 # Create send_msg helper function for command handlers
-
                 async def send_msg(msg):
-                    nonlocal message_sent_successfully
                     await send_telegram_message(chat_id, msg)
-                    message_sent_successfully = True
                 
                 # Check for debug commands
                 if await handle_debug_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (debug command) for telegram_id={telegram_id} ===")
-                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Check for user transparency commands
                 if await handle_user_command(telegram_id, text, send_msg):
                     logger.info(f"=== Update processed successfully (user command) for telegram_id={telegram_id} ===")
-                    processing_successful = message_sent_successfully
                     return {"ok": True}
                 
                 # Handle other commands
                 if text.startswith("/profiles"):
                     await handle_profiles_command(session, user, chat_id)
-                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (command) for telegram_id={telegram_id} ===")
-                    processing_successful = True
                     return {"ok": True}
                 
                 # Handle /reset_thread command
                 if text.startswith("/reset_thread"):
                     await handle_reset_thread_command(session, user, chat_id)
-                    message_sent_successfully = True  # These commands send messages
                     logger.info(f"=== Update processed successfully (reset_thread command) for telegram_id={telegram_id} ===")
-                    processing_successful = True
                     return {"ok": True}
             
-            # Route message based on state - this should send a message back
+            # Route message based on state
             await route_message(session, user, chat_id, text)
-            # Assume message was sent if route_message completes without exception
-            # TODO: For more robust tracking, route_message should return success status
-            message_sent_successfully = True
             
             logger.info(f"=== Update processed successfully for telegram_id={telegram_id} ===")
-            processing_successful = True
         finally:
             session.close()
         
@@ -1684,23 +1685,4 @@ async def handle_telegram_update(update: dict):
         
     except Exception as e:
         logger.exception(f"Critical error handling update: {e}")
-        # Don't mark as successful on exception
-        # Messages will remain pending and can be retried
         return {"ok": True}
-    finally:
-        # Mark messages as replied ONLY if we successfully sent a message
-        if processing_successful and message_sent_successfully and telegram_id is not None:
-            if is_command and message_id is not None:
-                # Commands only mark the current message (don't process pending messages)
-                mark_message_as_replied(telegram_id, message_id)
-                logger.info(f"Marked command message {message_id} as replied for user {telegram_id}")
-            else:
-                # Regular messages mark all pending (they process combined messages)
-                marked_count = mark_all_pending_as_replied(telegram_id)
-                if marked_count > 0:
-                    logger.info(f"Marked {marked_count} message(s) as replied for user {telegram_id}")
-        elif processing_successful and not message_sent_successfully:
-            logger.warning(
-                f"Processing completed but no message sent to user {telegram_id}. "
-                f"Messages remain pending and will be retried."
-            )

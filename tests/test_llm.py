@@ -385,60 +385,33 @@ class TestEnhancedIntentParsing:
 
 @pytest.mark.unit
 class TestIntentRouting:
-    """Tests for intent routing with change_profile support."""
+    """Tests for intent routing with keyword-based detection."""
 
-    @patch('src.services.intent_router.classify_intent')
-    def test_detect_request_type_change_profile(self, mock_classify):
-        """Test that change_profile intent is properly routed."""
+    def test_detect_request_type_change_profile(self):
+        """Test that change_profile keywords are properly detected."""
         from src.services.intent_router import detect_request_type
         
-        # Mock classify_intent to return change_profile
-        mock_classify.return_value = {
-            "intent": "change_profile",
-            "confidence": 0.96,
-            "original_prompt": "Переключись на профиль Маши",
-            "normalized_prompt": "Сменить активный профиль на профиль Маши"
-        }
-        
-        # Call function
+        # The new implementation uses keyword matching (no LLM call)
         result = detect_request_type("Переключись на профиль Маши")
         
-        # Verify routing
+        # Verify routing - "переключись" is in the profile switch patterns
         assert result == "change_profile"
 
-    @patch('src.services.intent_router.classify_intent')
-    def test_detect_request_type_birth_input(self, mock_classify):
-        """Test that provide_birth_data is routed to birth_input."""
+    def test_detect_request_type_birth_input(self):
+        """Test that birth data keywords are routed to birth_input."""
         from src.services.intent_router import detect_request_type
         
-        # Mock classify_intent
-        mock_classify.return_value = {
-            "intent": "provide_birth_data",
-            "confidence": 0.98,
-            "original_prompt": "Я родился 15 мая 1990",
-            "normalized_prompt": "Дата рождения: 15 мая 1990"
-        }
-        
-        # Call function
-        result = detect_request_type("Я родился 15 мая 1990")
+        # "dob:" is in the birth data patterns
+        result = detect_request_type("DOB: 1990-05-15")
         
         # Verify routing
         assert result == "birth_input"
 
-    @patch('src.services.intent_router.classify_intent')
-    def test_detect_request_type_natal_question_fallback(self, mock_classify):
-        """Test that other intents are routed to natal_question."""
+    def test_detect_request_type_natal_question_fallback(self):
+        """Test that non-matching messages are routed to natal_question."""
         from src.services.intent_router import detect_request_type
         
-        # Mock classify_intent
-        mock_classify.return_value = {
-            "intent": "ask_about_chart",
-            "confidence": 0.90,
-            "original_prompt": "Почему я такой упрямый?",
-            "normalized_prompt": "Почему я обладаю упрямством?"
-        }
-        
-        # Call function
+        # No birth data or profile keywords → natal_question
         result = detect_request_type("Почему я такой упрямый?")
         
         # Verify routing

@@ -1,10 +1,11 @@
 import os
 import logging
+import time
 from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from src.bot import handle_telegram_update
 from src.db import init_db, SessionLocal
-from src.message_cache import mark_if_new, has_pending_reply, mark_all_pending_as_replied, get_pending_messages
+from src.message_cache import mark_if_new, should_debounce, update_message_analytics, mark_all_pending_as_replied
 from src.models import ProcessedMessage
 
 
@@ -123,64 +124,35 @@ async def telegram_webhook(request: Request):
         
         logger.debug(f"Webhook received: message_id={message_id}, chat_id={chat_id}, telegram_id={telegram_id}")
         
-        # Check if this message has already been processed (atomic operation)
-        # Only apply deduplication if we have valid IDs (not None)
+        # Dedup + debounce – only when we have valid IDs
         if message_id is not None and telegram_id is not None:
             telegram_id_str = str(telegram_id)
-            
-            # First, atomically mark this message in DB (prevents duplicates and establishes order)
+
+            # 1. Atomically mark message in DB (prevents duplicates across restarts)
             is_new = mark_if_new(telegram_id_str, message_id, message_text)
-            
             if not is_new:
                 logger.info(f"Skipping duplicate message {message_id} from user {telegram_id_str}")
                 return {"ok": True, "skipped": "duplicate"}
-            
-            # Now check if there are OTHER pending messages (excluding current one)
-            # Since we marked current message first, it won't cause race conditions
-            pending_messages = get_pending_messages(telegram_id_str)
-            
-            # Filter out the current message from pending list (it was just added)
-            other_pending = [msg for msg in pending_messages if msg.message_id != message_id]
-            
-            if other_pending:
-                # There are OTHER messages waiting for reply - throttle this one
+
+            # 2. In-memory debounce: throttle rapid successive messages from same user
+            if should_debounce(telegram_id_str):
                 logger.info(
-                    f"Message {message_id} from user {telegram_id_str} throttled - "
-                    f"user has {len(other_pending)} other pending message(s). Message will be combined later."
+                    f"Message {message_id} from user {telegram_id_str} debounced (throttled)"
                 )
                 return {"ok": True, "throttled": True}
-            
-            # No other pending messages - this will be processed
-            # But also retrieve any messages that were marked during processing start
-            # This handles edge case where multiple messages arrive nearly simultaneously
-            pending_messages = get_pending_messages(telegram_id_str)
-            
-            if len(pending_messages) > 1:
-                # Multiple messages to process together (including current one)
-                all_texts = [msg.message_text for msg in pending_messages if msg.message_text]
-                
-                # Only combine if we have actual text to combine
-                # If all pending messages have NULL text (e.g., old messages from before migration),
-                # don't override the current message text
-                if all_texts:
-                    # Combine messages with separator
-                    combined_text = "\n\n---\n\n".join(all_texts)
-                    
-                    logger.info(
-                        f"Combining {len(pending_messages)} pending message(s) "
-                        f"({len(all_texts)} with text) for user {telegram_id_str}"
-                    )
-                    
-                    # Update the message text in the data structure to process combined message
-                    data["message"]["text"] = combined_text
-                else:
-                    logger.warning(
-                        f"Found {len(pending_messages)} pending message(s) for user {telegram_id_str} "
-                        f"but none have text content (possibly old messages from before migration). "
-                        f"Processing current message only."
-                    )
-        
+
+        # Process message and track latency for analytics
+        start_time = time.monotonic()
         result = await handle_telegram_update(data)
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+
+        # Record analytics (best-effort, non-blocking)
+        if message_id is not None and telegram_id is not None:
+            try:
+                update_message_analytics(str(telegram_id), message_id, latency_ms, role="user")
+            except Exception as analytics_err:
+                logger.debug("Analytics update failed (non-critical): %s", analytics_err)
+
         logger.debug(f"Webhook processing result: {result}")
         return result
     except Exception as e:
