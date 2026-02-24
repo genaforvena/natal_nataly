@@ -1395,7 +1395,7 @@ async def handle_reset_thread_command(session, user: User, chat_id: int):
         # Send confirmation message
         await send_telegram_message(
             chat_id,
-            f"✅ История разговора очищена!\n\n"
+            "✅ История разговора очищена!\n\n"
             "Теперь мы начинаем с чистого листа. Задай мне вопрос о своей натальной карте!"
         )
         
