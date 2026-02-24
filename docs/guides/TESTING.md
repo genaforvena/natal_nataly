@@ -74,6 +74,27 @@ Tests are organized by module:
   - API error handling
   - Database operations
 
+- **`tests/test_message_cache.py`** - Tests for message deduplication cache
+  - In-memory cache operations
+  - Database-backed dedup
+  - Cache expiry and cleanup
+
+- **`tests/test_message_throttling.py`** - Tests for in-memory debounce throttling
+
+- **`tests/test_message_text_integration.py`** - Tests for message text storage integration
+
+- **`tests/test_webhook_deduplication.py`** - Tests for webhook duplicate-message handling
+
+- **`tests/test_webhook_secret_token.py`** - Tests for webhook secret token verification
+
+- **`tests/test_startup_cleanup.py`** - Tests for startup stale-message cleanup
+
+- **`tests/test_migration_compatibility.py`** - Tests for database migration compatibility
+
+- **`tests/test_user_profile_manager.py`** - Tests for dynamic user profile management
+
+- **`tests/test_thread_manager.py`** - Thread management tests
+
 ## Linting and Type Checking
 
 ### Running Flake8

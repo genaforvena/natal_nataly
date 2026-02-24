@@ -14,8 +14,13 @@ natal_nataly/
 │   ├── llm.py               # LLM integration for AI interpretations
 │   ├── db.py                # Database initialization and configuration
 │   ├── models.py            # SQLAlchemy database models
-│   ├── thread_manager.py    # Conversation thread management
+│   ├── thread_manager.py    # Conversation thread management (legacy, kept for backward compat)
+│   ├── session_manager.py   # Conversation context stored as JSON in User model
+│   ├── message_cache.py     # Hybrid in-memory/DB cache + in-memory debounce throttling
 │   ├── user_commands.py     # User command handlers (/my_data, etc.)
+│   ├── user_profile_manager.py  # Dynamic user profile document (LLM-maintained)
+│   ├── astro_service.py     # Unified astrology calculation interface (wraps chart_builder)
+│   ├── expectation_extractor.py # Analyzes conversation to extract user expectations for LLM
 │   ├── chart_parser.py      # Chart data parsing and validation
 │   ├── chart_svg.py         # SVG chart rendering
 │   ├── prompt_loader.py     # LLM prompt template loader
@@ -32,16 +37,26 @@ natal_nataly/
 │
 ├── tests/                   # Test suite
 │   ├── __init__.py
-│   ├── test_bot.py          # Bot logic tests
-│   ├── test_chart_builder.py   # Chart generation tests
-│   ├── test_integration.py     # Integration tests
-│   ├── test_llm.py             # LLM integration tests
-│   └── test_thread_manager.py  # Thread management tests
+│   ├── conftest.py                       # Pytest fixtures and shared configuration
+│   ├── test_bot.py                       # Bot logic tests
+│   ├── test_chart_builder.py             # Chart generation tests
+│   ├── test_integration.py               # Integration tests
+│   ├── test_llm.py                       # LLM integration tests
+│   ├── test_message_cache.py             # Message cache and debounce tests
+│   ├── test_message_text_integration.py  # Message text storage integration tests
+│   ├── test_message_throttling.py        # Message throttling/debounce tests
+│   ├── test_migration_compatibility.py   # Database migration compatibility tests
+│   ├── test_startup_cleanup.py           # Startup stale-message cleanup tests
+│   ├── test_thread_manager.py            # Thread management tests
+│   ├── test_user_profile_manager.py      # User profile manager tests
+│   ├── test_webhook_deduplication.py     # Webhook duplicate-message handling tests
+│   └── test_webhook_secret_token.py      # Webhook secret token verification tests
 │
 ├── scripts/                 # Utility scripts and debugging tools
 │   ├── debug.py            # Debug mode implementation
 │   ├── debug_commands.py   # Developer debug commands
-│   └── demo_thread_management.py  # Demo script for thread feature
+│   ├── demo_thread_management.py  # Demo script for thread feature
+│   └── test_docker.sh      # Docker deployment smoke tests
 │
 ├── docs/                    # Documentation
 │   ├── PROJECT_STRUCTURE.md    # This file
@@ -93,9 +108,15 @@ natal_nataly/
 - **main.py** - FastAPI application with webhook and health check endpoints
 - **bot.py** - Main bot logic: message parsing, state management, response generation
 - **astrology.py** - Wraps Swiss Ephemeris for natal chart calculations
+- **astro_service.py** - Unified astrology calculation interface (stable API over chart_builder/transit_builder)
 - **llm.py** - OpenAI-compatible API integration (Groq, DeepSeek)
 - **db.py** - Database engine and session management (SQLite/PostgreSQL)
 - **models.py** - SQLAlchemy ORM models for User, BirthData, Reading, etc.
+- **message_cache.py** - Hybrid in-memory/DB cache for dedup; in-memory debounce for throttling
+- **session_manager.py** - Conversation context stored as a capped JSON array on the User record
+- **thread_manager.py** - Legacy conversation thread management (DB row per message; kept for backward compat)
+- **user_profile_manager.py** - Maintains a dynamic LLM-updated user profile document
+- **expectation_extractor.py** - Analyzes conversation history to surface user expectations for LLM prompts
 
 ### Services (`src/services/`)
 

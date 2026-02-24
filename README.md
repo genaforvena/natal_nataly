@@ -121,16 +121,14 @@ To enable webhook security:
 
 ### Message Throttling
 
-The bot implements intelligent message throttling to improve user experience:
+The bot implements in-memory debounce throttling to prevent duplicate processing of rapid successive messages:
 
-- **Reply-Based Throttling**: Messages from the same user are automatically combined before processing
-- **Automatic Queuing**: When a user sends multiple messages before receiving a reply, only the first is processed
-- **Message Combining**: Subsequent messages are queued and combined with the first message  
-- **Single Response**: The bot sends ONE comprehensive reply addressing all queued messages together
-- **Per-User**: Throttling is applied independently for each user
-- **Efficient**: Reduces LLM API calls and prevents response flooding
+- **Debounce Window**: Messages from the same user arriving within 500 ms of each other are automatically dropped
+- **In-Memory Only**: Throttle state is not persisted – it resets when the bot restarts
+- **Per-User**: Debouncing is applied independently for each user
+- **Efficient**: Reduces redundant LLM API calls without blocking valid messages
 
-This prevents duplicate processing when users send multiple quick messages and provides more coherent responses.
+This prevents double-processing when Telegram re-delivers a webhook event or when a user taps "Send" multiple times in quick succession.
 
 ## Deploy to Render (Free Hosting)
 
