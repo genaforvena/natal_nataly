@@ -71,46 +71,40 @@ class TestMessageTextIntegration:
         assert call_args["message"]["text"] == message_text
     
     def test_multiple_messages_combined_with_separator(self, client, mock_bot_handler):
-        """Test that multiple pending messages are combined with the correct separator."""
+        """
+        Test debounce throttling: first message is processed, subsequent messages
+        from the same user within the debounce window are throttled (not combined).
+        """
         user_id = 99999
         
-        # Track the combined text that gets passed to the bot
-        combined_texts = []
+        # Track messages that reach the bot
+        processed_texts = []
         
         def capture_text(data):
             text = data.get("message", {}).get("text", "")
-            combined_texts.append(text)
+            processed_texts.append(text)
             return {"ok": True}
         
         mock_bot_handler.side_effect = capture_text
         
-        # Send first message (processed immediately)
+        # First message is processed immediately
         payload1 = create_webhook_payload(user_id, 1, "First message")
-        client.post("/webhook", json=payload1)
+        response1 = client.post("/webhook", json=payload1)
+        assert response1.status_code == 200
+        assert response1.json().get("throttled") is not True
         
-        # Send second message (throttled, stored)
+        # Subsequent messages within the debounce window are throttled
         payload2 = create_webhook_payload(user_id, 2, "Second message")
         response2 = client.post("/webhook", json=payload2)
         assert response2.json().get("throttled") is True
         
-        # Send third message (throttled, stored)
         payload3 = create_webhook_payload(user_id, 3, "Third message")
         response3 = client.post("/webhook", json=payload3)
         assert response3.json().get("throttled") is True
         
-        # Mark all as replied to simulate successful processing
-        mark_all_pending_as_replied(str(user_id))
-        
-        # Send fourth message (should combine pending messages 2 and 3 if any remain)
-        # But since we marked them as replied, this should be a new message
-        payload4 = create_webhook_payload(user_id, 4, "Fourth message")
-        client.post("/webhook", json=payload4)
-        
-        # First call should have "First message"
-        assert combined_texts[0] == "First message"
-        
-        # Fourth call should just be "Fourth message" since previous were marked as replied
-        assert combined_texts[-1] == "Fourth message"
+        # Only the first message reached the bot handler
+        assert len(processed_texts) == 1
+        assert processed_texts[0] == "First message"
     
     def test_combined_messages_use_correct_separator(self, client, mock_bot_handler):
         r"""

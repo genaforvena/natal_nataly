@@ -37,12 +37,8 @@ def mock_bot_handler():
 @pytest.fixture
 def mock_throttle():
     """Mock the message throttling to process messages immediately in tests."""
-    with patch('src.main.has_pending_reply') as mock_has_pending, \
-         patch('src.main.get_pending_messages') as mock_get_pending:
-        # No pending messages by default - allow processing
-        mock_has_pending.return_value = False
-        mock_get_pending.return_value = []
-        yield (mock_has_pending, mock_get_pending)
+    with patch('src.main.should_debounce', return_value=False):
+        yield
 
 
 @pytest.mark.integration

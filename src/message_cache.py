@@ -5,13 +5,13 @@ This module implements a hybrid caching system:
 1. In-memory cache for fast lookups (performance)
 2. Database-backed storage for persistence across restarts (reliability)
 
-This prevents duplicate processing when:
-- Multiple webhooks arrive concurrently (in-memory lock)
-- Application restarts while Telegram retries webhooks (database persistence)
+Throttling (debounce) is handled entirely in-memory per user to avoid
+DB-driven throttling logic.
 """
 
 import logging
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Tuple, NamedTuple
 from sqlalchemy.orm import Session
@@ -38,6 +38,46 @@ _cache_lock = threading.RLock()
 # Cache configuration
 CACHE_EXPIRY_HOURS = 24  # How long to keep entries in memory cache
 # Note: Database entries are kept indefinitely (no expiry/deletion)
+
+# ============================================================================
+# IN-MEMORY DEBOUNCE (replaces DB-driven throttling)
+# ============================================================================
+
+# Per-user last-message timestamp for debounce (seconds since epoch)
+_user_debounce: Dict[str, float] = {}
+
+# Debounce window: messages from the same user within this window are throttled
+DEBOUNCE_SECONDS = 0.5  # 500 ms
+
+
+def should_debounce(telegram_id: str) -> bool:
+    """
+    Check whether a new message from this user should be debounced (throttled).
+
+    Returns True if a message from the same user was processed within the last
+    DEBOUNCE_SECONDS, meaning the new message should be dropped/throttled.
+    Returns False and records the current time if the message should be processed.
+
+    This function is the sole throttling mechanism; no DB queries are made.
+
+    Args:
+        telegram_id: Telegram user ID string.
+
+    Returns:
+        True if the message should be throttled, False if it should be processed.
+    """
+    now = time.monotonic()
+    with _cache_lock:
+        last = _user_debounce.get(telegram_id, 0.0)
+        if now - last < DEBOUNCE_SECONDS:
+            logger.debug(
+                "Debounce: throttling message from user %s (%.3fs since last)",
+                telegram_id,
+                now - last,
+            )
+            return True
+        _user_debounce[telegram_id] = now
+        return False
 
 
 def mark_if_new(telegram_id: str, message_id: int, message_text: str = None) -> bool:
@@ -230,7 +270,7 @@ def get_cache_stats() -> Dict[str, int]:
 
 def clear_cache() -> None:
     """
-    Clear all entries from in-memory cache and database.
+    Clear all entries from in-memory cache, debounce state, and database.
     Useful for testing and debugging ONLY.
     
     In normal operation, database entries are kept indefinitely for audit trail.
@@ -242,7 +282,9 @@ def clear_cache() -> None:
     with _cache_lock:
         # Clear in-memory cache
         _processed_messages.clear()
-        logger.info("In-memory message cache cleared")
+        # Clear in-memory debounce state
+        _user_debounce.clear()
+        logger.info("In-memory message cache and debounce state cleared")
         
         # Clear database
         try:
@@ -403,5 +445,38 @@ def mark_all_pending_as_replied(telegram_id: str) -> int:
         logger.exception(f"Error marking pending messages as replied: {e}")
         session.rollback()
         return 0
+    finally:
+        session.close()
+
+
+def update_message_analytics(telegram_id: str, message_id: int, latency_ms: int, role: str = "user") -> None:
+    """
+    Update analytics fields (role, latency_ms) for a processed message.
+
+    Called after processing completes to record how long it took and the role.
+
+    Args:
+        telegram_id: Telegram user ID
+        message_id:  Telegram message ID
+        latency_ms:  Processing latency in milliseconds
+        role:        "user" (default) or "assistant"
+    """
+    session = SessionLocal()
+    try:
+        session.query(ProcessedMessage).filter_by(
+            telegram_id=telegram_id,
+            message_id=message_id,
+        ).update({'role': role, 'latency_ms': latency_ms})
+        session.commit()
+        logger.debug(
+            "Updated analytics for message %s from user %s: role=%s, latency=%dms",
+            message_id,
+            telegram_id,
+            role,
+            latency_ms,
+        )
+    except Exception as exc:
+        logger.warning("Failed to update message analytics: %s", exc)
+        session.rollback()
     finally:
         session.close()

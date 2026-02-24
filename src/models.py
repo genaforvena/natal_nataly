@@ -2,13 +2,22 @@ from sqlalchemy import Column, String, DateTime, Integer, Float, Text, Boolean, 
 from datetime import datetime, timezone
 from src.db import Base
 
-# User state constants
-STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"
-STATE_AWAITING_CLARIFICATION = "awaiting_clarification"
-STATE_AWAITING_CONFIRMATION = "awaiting_confirmation"
-STATE_AWAITING_EDIT_CONFIRMATION = "awaiting_edit_confirmation"
-STATE_HAS_CHART = "has_chart"
-STATE_CHATTING_ABOUT_CHART = "chatting_about_chart"
+# ============================================================================
+# USER STATE CONSTANTS
+# ============================================================================
+
+# Simplified lifecycle states (new)
+STATE_ONBOARDING = "onboarding"   # User hasn't provided birth data yet
+STATE_READY = "ready"             # User has a natal chart and is chatting
+STATE_EDITING = "editing"         # User is editing/updating birth data
+
+# Legacy states kept for backward compatibility (deprecated)
+STATE_AWAITING_BIRTH_DATA = "awaiting_birth_data"        # → ONBOARDING
+STATE_AWAITING_CLARIFICATION = "awaiting_clarification"  # → ONBOARDING
+STATE_AWAITING_CONFIRMATION = "awaiting_confirmation"    # → ONBOARDING
+STATE_AWAITING_EDIT_CONFIRMATION = "awaiting_edit_confirmation"  # → EDITING
+STATE_HAS_CHART = "has_chart"                           # → READY
+STATE_CHATTING_ABOUT_CHART = "chatting_about_chart"     # → READY
 
 class User(Base):
     __tablename__ = "users"
@@ -16,7 +25,7 @@ class User(Base):
     telegram_id = Column(String, primary_key=True)
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    state = Column(String, default=STATE_AWAITING_BIRTH_DATA)  # Use state constants defined above
+    state = Column(String, default=STATE_ONBOARDING)  # Use state constants defined above
     natal_chart_json = Column(Text, nullable=True)  # Store generated natal chart (legacy, use AstroProfile instead)
     missing_fields = Column(String, nullable=True)  # Comma-separated list of missing fields
     active_profile_id = Column(Integer, ForeignKey('astro_profiles.id'), nullable=True)  # Reference to active AstroProfile
@@ -24,6 +33,9 @@ class User(Base):
     pending_birth_data = Column(Text, nullable=True)  # JSON: birth data pending confirmation
     pending_normalized_data = Column(Text, nullable=True)  # JSON: normalized birth data pending confirmation
     user_profile = Column(Text, nullable=True)  # Dynamic user profile document (LLM-maintained, max ~4000 chars)
+    # New fields for simplified architecture
+    last_update_id = Column(Integer, nullable=True)  # Last processed Telegram update_id for dedup
+    conversation_session_json = Column(Text, nullable=True)  # JSON array of last N messages [{role, content}]
 
 class AstroProfile(Base):
     """
@@ -38,6 +50,7 @@ class AstroProfile(Base):
     profile_type = Column(String, default="self")  # self|partner|friend|analysis
     birth_data_json = Column(Text, nullable=False)  # JSON: {dob, time, lat, lng}
     natal_chart_json = Column(Text, nullable=True)  # JSON: generated natal chart
+    chart_hash = Column(String, nullable=True)  # Hash of chart for quick comparison
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class BirthData(Base):
@@ -69,8 +82,9 @@ class Reading(Base):
 
 class ProcessedMessage(Base):
     """
-    Persistent storage for processed Telegram messages to prevent duplicates.
+    Persistent storage for processed Telegram messages (analytics).
     Survives application restarts unlike in-memory cache.
+    Role: analytics-only; throttling is handled via in-memory debounce.
     """
     __tablename__ = "processed_messages"
 
@@ -78,9 +92,11 @@ class ProcessedMessage(Base):
     telegram_id = Column(String, nullable=False, index=True)
     message_id = Column(Integer, nullable=False, index=True)
     processed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    reply_sent = Column(Boolean, default=False, nullable=False, index=True)  # Track if bot replied to this message
-    reply_sent_at = Column(DateTime, nullable=True)  # When the reply was sent
-    message_text = Column(Text, nullable=True)  # Store message text for combining throttled messages
+    reply_sent = Column(Boolean, default=False, nullable=False, index=True)  # Legacy: kept for backward compat
+    reply_sent_at = Column(DateTime, nullable=True)  # Legacy: kept for backward compat
+    message_text = Column(Text, nullable=True)  # Message text content
+    role = Column(String, nullable=True)  # "user" or "assistant" – for analytics
+    latency_ms = Column(Integer, nullable=True)  # Processing latency in milliseconds
     
     # Composite unique constraint to prevent duplicate entries at database level
     __table_args__ = (
