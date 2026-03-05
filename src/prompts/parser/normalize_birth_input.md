@@ -41,6 +41,9 @@ Additionally, you must provide both the original input and a normalized version.
 **Input:** "I was born on May 15, 1990 at 2:30 PM in New York"
 **Output:** {{"dob": "1990-05-15", "time": "14:30", "lat": 40.7128, "lng": -74.0060, "location": "New York", "original_input": "I was born on May 15, 1990 at 2:30 PM in New York", "normalized_input": "DOB: 1990-05-15, Time: 14:30, Location: New York (40.7128, -74.0060)", "missing_fields": []}}
 
+**Input:** "I was born in August 13 2014 5:16 in London"
+**Output:** {{"dob": "2014-08-13", "time": "05:16", "lat": 51.5074, "lng": -0.1278, "location": "London", "original_input": "I was born in August 13 2014 5:16 in London", "normalized_input": "DOB: 2014-08-13, Time: 05:16, Location: London (51.5074, -0.1278)", "missing_fields": []}}
+
 **Input:** "Born 1985-03-20, morning, Moscow"
 **Output:** {{"dob": "1985-03-20", "time": null, "lat": 55.7558, "lng": 37.6173, "location": "Moscow", "original_input": "Born 1985-03-20, morning, Moscow", "normalized_input": "DOB: 1985-03-20, Time: unknown (morning), Location: Moscow (55.7558, 37.6173)", "missing_fields": ["time"]}}
 

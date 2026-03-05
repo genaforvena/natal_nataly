@@ -708,6 +708,17 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
                 conversation_history=conversation_history,
                 user_profile=user_profile
             )
+
+            # Persist conversation context for data accumulation
+            update_session_context(
+                session,
+                user,
+                [
+                    {"role": "user", "content": text},
+                    {"role": "assistant", "content": question},
+                ],
+            )
+
             await send_telegram_message(chat_id, question)
             return
         
@@ -1053,6 +1064,17 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
                 conversation_history=conversation_history,
                 user_profile=user_profile
             )
+
+            # Persist conversation context for data accumulation
+            update_session_context(
+                session,
+                user,
+                [
+                    {"role": "user", "content": text},
+                    {"role": "assistant", "content": question},
+                ],
+            )
+
             response = await send_telegram_message(chat_id, question)
             if response is None:
                 logger.warning(f"Could not send clarification question to chat_id={chat_id}, chat may be invalid")
