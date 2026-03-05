@@ -718,6 +718,7 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
                     {"role": "assistant", "content": question},
                 ],
             )
+            session.commit()
 
             await send_telegram_message(chat_id, question)
             return
@@ -775,6 +776,16 @@ async def handle_awaiting_birth_data(session, user: User, chat_id: int, text: st
         user.pending_birth_data = json.dumps(birth_data)
         user.pending_normalized_data = json.dumps(normalized_birth_data)
         user.state = STATE_AWAITING_CONFIRMATION
+
+        # Persist conversation context for data accumulation
+        update_session_context(
+            session,
+            user,
+            [
+                {"role": "user", "content": text},
+            ],
+        )
+
         session.commit()
         
         # Show confirmation message
@@ -1074,6 +1085,7 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
                     {"role": "assistant", "content": question},
                 ],
             )
+            session.commit()
 
             response = await send_telegram_message(chat_id, question)
             if response is None:
@@ -1099,6 +1111,15 @@ async def handle_awaiting_clarification(session, user: User, chat_id: int, text:
         # Create profile and set as active
         create_and_activate_profile(session, user, birth_data, chart)
         
+        # Persist final piece of data in context
+        update_session_context(
+            session,
+            user,
+            [
+                {"role": "user", "content": text},
+            ],
+        )
+
         # Clear missing fields
         update_user_state(session, user.telegram_id, STATE_HAS_CHART, missing_fields=None)
         
